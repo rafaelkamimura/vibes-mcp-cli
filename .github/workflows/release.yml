@@ -29,9 +29,17 @@ jobs:
             echo "Building $output"
             GOOS=$os GOARCH=$arch go build -ldflags='-s -w' -o "$output" .
           done
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+      - name: Generate CHANGELOG.md
+        run: |
+          npm install -g conventional-changelog-cli
+          npx conventional-changelog -p angular -i CHANGELOG.md -s
       - name: Publish Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*
+          files: dist/* CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -20,14 +20,14 @@ var TestClient service.APIClient
 
 // NewClient returns a service.APIClient for the given provider.
 func NewClient(providerName, apiKey, baseURL string) (service.APIClient, error) {
-   name := strings.ToLower(providerName)
-   // test stub provider
-   if name == "test" {
-       if TestClient == nil {
-           return nil, fmt.Errorf("test client not set")
-       }
-       return TestClient, nil
-   }
+	name := strings.ToLower(providerName)
+	// test stub provider
+	if name == "test" {
+		if TestClient == nil {
+			return nil, fmt.Errorf("test client not set")
+		}
+		return TestClient, nil
+	}
 	if name == "" {
 		name = ProviderOpenAI
 	}

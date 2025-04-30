@@ -66,6 +66,7 @@ var rootCmd = &cobra.Command{
 		return nil
 	},
 }
+
 // RootCmd exposes the root command for integration testing
 var RootCmd = rootCmd
 
