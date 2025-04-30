@@ -1,0 +1,7 @@
+# Sample configuration for openai-cli
+# Copy this file to $HOME/.openai-cli.yaml and fill in your API key.
+
+api_key: "YOUR_OPENAI_API_KEY"
+base_url: "https://api.openai.com"
+provider: "openai"
+log_level: "info"

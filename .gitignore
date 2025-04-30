@@ -1,0 +1,36 @@
+# Binaries and build artifacts
+/openai-cli
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+# Test binaries and coverage
+*.test
+coverage.out
+
+# Environment variables
+.env
+.env.local
+# Local override of config
+/.openai-cli.yaml
+
+# Dependency directories
+/vendor/
+
+# Coverage and reports
+/htmlcov/
+/docs/htmlcov/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

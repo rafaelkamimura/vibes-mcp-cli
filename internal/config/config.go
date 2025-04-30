@@ -1,0 +1,71 @@
+package config
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/joho/godotenv"
+	"github.com/spf13/viper"
+)
+
+// Config holds application settings.
+// Config holds application settings.
+type Config struct {
+	// APIKey for the selected provider
+	APIKey string
+	// BaseURL for the selected provider's API
+	BaseURL string
+	// Provider selects which MCP provider to use (openai, anthropic, etc.)
+	Provider string
+	// LogLevel sets the logging level (debug, info, warn, error)
+	LogLevel string
+}
+
+// LoadConfig reads config from file or environment.
+func LoadConfig(cfgFile string) (*Config, error) {
+	// Load environment variables from .env if available
+	_ = godotenv.Load()
+	v := viper.New()
+	if cfgFile != "" {
+		v.SetConfigFile(cfgFile)
+	} else {
+		v.SetConfigName(".openai-cli")
+		// search for config in current directory first, then home directory
+		v.AddConfigPath(".")
+		v.AddConfigPath(os.ExpandEnv("$HOME"))
+	}
+	v.SetEnvPrefix("OPENAI_CLI")
+	v.AutomaticEnv()
+
+	// defaults
+	v.SetDefault("base_url", "https://api.openai.com")
+	v.SetDefault("provider", "openai")
+	v.SetDefault("log_level", "info")
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, err
+		}
+	}
+
+	// API key: prefer CLI prefix, fallback to generic OPENAI_API_KEY
+	ack := v.GetString("api_key")
+	if ack == "" {
+		ack = os.Getenv("OPENAI_API_KEY")
+	}
+	if ack == "" {
+		return nil, fmt.Errorf("API key must be set via env OPENAI_CLI_API_KEY, OPENAI_API_KEY, or config file")
+	}
+	// Base URL: prefer CLI prefix, fallback to generic OPENAI_BASE_URL
+	burl := v.GetString("base_url")
+	if burl == "" {
+		burl = os.Getenv("OPENAI_BASE_URL")
+	}
+	cfg := &Config{
+		APIKey:   ack,
+		BaseURL:  burl,
+		Provider: v.GetString("provider"),
+		LogLevel: v.GetString("log_level"),
+	}
+	return cfg, nil
+}

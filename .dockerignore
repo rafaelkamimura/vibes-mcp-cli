@@ -1,0 +1,12 @@
+**/.git
+**/.gitignore
+Dockerfile
+docker-compose.yml
+.dockerignore
+README.md
+codex.md
+htmlcov
+docs
+tests
+*.md
+.env*
