@@ -21,7 +21,7 @@ jobs:
       - name: Tidy modules
         run: |
           # Ensure go.mod uses supported version and remove toolchain directive
-          go mod edit -go=1.20
+          sed -i 's/^go .*/go 1.20/' go.mod || true
           sed -i '/^toolchain /d' go.mod || true
           go mod tidy
       - name: Lint
