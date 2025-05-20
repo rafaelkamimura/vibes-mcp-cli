@@ -207,3 +207,12 @@ Now your MCP server is listening on `http://localhost:8080`.
 
 ---
 _Generated README by the openai-cli scaffolding agent._
+
+## Next Steps
+
+- Integrate remaining API endpoints into the UI client (per API_ENDPOINTS.md):
+  - Role management and user enable/disable endpoints under `/auth`
+  - Tenant, role, and permission management under `/user`
+  - WebSocket streaming via `/agent/ws`
+  - JSON-RPC tool proxy endpoint `/mcp`
+  - Any other endpoints outlined in API_ENDPOINTS.md not yet supported in the TUI
