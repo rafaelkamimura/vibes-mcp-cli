@@ -2,14 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"openai-cli/internal/config"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
-	"openai-cli/internal/config"
 )
 
 var (
@@ -25,6 +24,8 @@ var (
 	serverPort int
 	// serverURL proxies CLI requests to an MCP HTTP server
 	serverURL string
+	// agentURL specifies the Vibes Agent backend URL for agent chat and auth
+	agentURL string
 	// printCurl outputs the curl command instead of executing
 	printCurl bool
 )
@@ -81,6 +82,10 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// override agent backend URL if flag provided
+		if agentURL != "" {
+			cfg.AgentURL = agentURL
+		}
 		return nil
 	},
 }
@@ -105,6 +110,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "API key (overrides config/env)")
 	rootCmd.PersistentFlags().StringVar(&baseURLFlag, "base-url", "", "API base URL (overrides config/env)")
 	rootCmd.PersistentFlags().StringVar(&serverURL, "server-url", "", "MCP server URL (overrides direct provider)")
+	rootCmd.PersistentFlags().StringVar(&agentURL, "agent-url", "http://localhost:8000", "Vibes Agent backend URL (default http://localhost:8000)")
 	rootCmd.PersistentFlags().BoolVar(&printCurl, "print-curl", false, "Print equivalent curl command and exit")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "log level (overrides config: debug, info, warn, error)")
 	rootCmd.AddCommand(completionCmd)
