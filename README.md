@@ -103,6 +103,14 @@ export PROMPT_MODE_PASSWORD=your-password
 ``` 
 Type your message at the `>>> ` prompt. Enter `exit` or `quit` to end.
 
+### UI (Terminal TUI)
+
+Launch an interactive terminal UI for chat and Postman collections:
+```bash
+./openai-cli ui [--model MODEL] [--collection PATH]
+```
+Use F1 to switch to Chat mode and F2 to switch to Postman mode. In Postman mode, navigate and select a `.json` collection, then press **Ctrl+S** to send a request.
+
 ### Embeddings
 
 Compute embeddings for one or more inputs:

@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -18,7 +21,10 @@ import (
 )
 
 // uiChatModel is the chat model used in the UI
-var uiChatModel string
+var (
+	uiChatModel      string
+	uiCollectionPath string
+)
 
 // uiCmd launches a terminal UI for interactive chat
 var uiCmd = &cobra.Command{
@@ -33,6 +39,7 @@ var uiCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(uiCmd)
 	uiCmd.Flags().StringVar(&uiChatModel, "model", "gpt-3.5-turbo", "chat model to use in UI")
+	uiCmd.Flags().StringVar(&uiCollectionPath, "collection", "", "path to Postman collection JSON file to load")
 }
 
 // runUI initializes and runs the TUI
@@ -210,14 +217,114 @@ func runUI() error {
 		}
 		chatView.ScrollToEnd()
 	})
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
+	chatFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(chatView, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
 			AddItem(dropdown, 0, 1, false).
 			AddItem(modelDropdown, 0, 1, false), 3, 0, false).
 		AddItem(input, 1, 0, true)
-	// Run
-	if err := app.SetRoot(flex, true).EnableMouse(true).Run(); err != nil {
+
+	fileBrowser := tview.NewTreeView()
+	fileBrowser.SetBorder(true)
+	fileBrowser.SetTitle("Select Collection (.json)")
+
+	var addNodes func(node *tview.TreeNode, path string)
+	addNodes = func(node *tview.TreeNode, path string) {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			fullPath := filepath.Join(path, entry.Name())
+			child := tview.NewTreeNode(entry.Name()).
+				SetReference(fullPath).
+				SetSelectable(true)
+			if entry.IsDir() {
+				child.SetColor(tcell.ColorGreen)
+				child.SetExpanded(false)
+				addNodes(child, fullPath)
+			}
+			node.AddChild(child)
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	rootNode := tview.NewTreeNode(cwd).
+		SetReference(cwd).
+		SetColor(tcell.ColorGreen).
+		SetExpanded(true)
+	addNodes(rootNode, cwd)
+	fileBrowser.SetRoot(rootNode).SetCurrentNode(rootNode)
+
+	postmanContent := tview.NewTextView()
+	postmanContent.SetBorder(true)
+	postmanContent.SetTitle("Collection")
+	if uiCollectionPath != "" {
+		postmanContent.Write([]byte(fmt.Sprintf("Loaded collection: %s\n", uiCollectionPath)))
+	} else {
+		postmanContent.Write([]byte("No collection loaded\n"))
+	}
+
+	fileBrowser.SetSelectedFunc(func(node *tview.TreeNode) {
+		ref := node.GetReference().(string)
+		info, err := os.Stat(ref)
+		if err != nil {
+			return
+		}
+		if info.IsDir() {
+			node.SetExpanded(!node.IsExpanded())
+			return
+		}
+		if strings.HasSuffix(strings.ToLower(ref), ".json") {
+			uiCollectionPath = ref
+			postmanContent.Clear()
+			fmt.Fprintf(postmanContent, "Loaded collection: %s\n", uiCollectionPath)
+		}
+	})
+
+	postmanFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(fileBrowser, 0, 1, true).
+		AddItem(postmanContent, 0, 2, false)
+
+	chatTitle := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText("[::b]Chat[::-] (F1)")
+	postmanTitle := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText("Postman (F2)")
+	modeBar := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(chatTitle, 0, 1, false).
+		AddItem(postmanTitle, 0, 1, false)
+
+	pages := tview.NewPages().
+		AddPage("chat", chatFlex, true, true).
+		AddPage("postman", postmanFlex, true, false)
+
+	root := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(modeBar, 1, 0, false).
+		AddItem(pages, 0, 1, true)
+
+	root.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyF1:
+			pages.SwitchToPage("chat")
+			chatTitle.SetText("[::b]Chat[::-] (F1)")
+			postmanTitle.SetText("Postman (F2)")
+			return nil
+		case tcell.KeyF2:
+			pages.SwitchToPage("postman")
+			chatTitle.SetText("Chat (F1)")
+			postmanTitle.SetText("[::b]Postman[::-] (F2)")
+			return nil
+		case tcell.KeyCtrlS:
+			return nil
+		}
+		return event
+	})
+
+	if err := app.SetRoot(root, true).EnableMouse(true).Run(); err != nil {
 		return err
 	}
 	return nil
