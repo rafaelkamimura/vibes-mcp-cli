@@ -2,13 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"openai-cli/internal/config"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-
-	"openai-cli/internal/config"
 )
 
 var (
@@ -24,12 +24,31 @@ var (
 	serverPort int
 	// serverURL proxies CLI requests to an MCP HTTP server
 	serverURL string
+	// agentURL specifies the Vibes Agent backend URL for agent chat and auth
+	agentURL string
 	// printCurl outputs the curl command instead of executing
 	printCurl bool
 )
 
-// rootCmd is the base command for openai-cli
+// rootCmd is the base command for the CLI
+// getProjectName derives the CLI name from the invoked executable's basename.
+func getProjectName() string {
+	if exePath, err := os.Executable(); err == nil {
+		name := filepath.Base(exePath)
+		if ext := filepath.Ext(name); ext != "" {
+			name = name[:len(name)-len(ext)]
+		}
+		return name
+	}
+	name := filepath.Base(os.Args[0])
+	if ext := filepath.Ext(name); ext != "" {
+		name = name[:len(name)-len(ext)]
+	}
+	return name
+}
+
 var rootCmd = &cobra.Command{
+	// Use is overridden at init to match the git repository name
 	Use:   "openai-cli",
 	Short: "CLI for OpenAI API",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -63,6 +82,10 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		// override agent backend URL if flag provided
+		if agentURL != "" {
+			cfg.AgentURL = agentURL
+		}
 		return nil
 	},
 }
@@ -79,11 +102,15 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.openai-cli.yaml)")
+	// override CLI use name based on repository
+	projectName := getProjectName()
+	rootCmd.Use = projectName
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default is $HOME/.%s.yaml)", projectName))
 	rootCmd.PersistentFlags().StringVar(&providerFlag, "provider", "", "provider to use (overrides config: openai, anthropic)")
 	rootCmd.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "API key (overrides config/env)")
 	rootCmd.PersistentFlags().StringVar(&baseURLFlag, "base-url", "", "API base URL (overrides config/env)")
 	rootCmd.PersistentFlags().StringVar(&serverURL, "server-url", "", "MCP server URL (overrides direct provider)")
+	rootCmd.PersistentFlags().StringVar(&agentURL, "agent-url", "http://localhost:8000", "Vibes Agent backend URL (default http://localhost:8000)")
 	rootCmd.PersistentFlags().BoolVar(&printCurl, "print-curl", false, "Print equivalent curl command and exit")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "log level (overrides config: debug, info, warn, error)")
 	rootCmd.AddCommand(completionCmd)

@@ -25,6 +25,11 @@
    base_url: "https://api.openai.com"
    provider: "openai"
    log_level: "info"
+   # Optional: JWT auth token for Vibes Agent backend to persist login
+   auth_token: "your-agent-auth-token"
+   templates:
+     - "Hey, what's up!"
+     - "Hows the weather in Brasilia - DF right now?"
    ```
 5. Build:
    ```bash
@@ -100,6 +105,14 @@ export PROMPT_MODE_PASSWORD=your-password
 ``` 
 Type your message at the `>>> ` prompt. Enter `exit` or `quit` to end.
 
+### UI (Terminal TUI)
+
+Launch an interactive terminal UI for chat and Postman collections:
+```bash
+./openai-cli ui [--model MODEL] [--collection PATH]
+```
+Use F1 to switch to Chat mode and F2 to switch to Postman mode. In Postman mode, navigate and select a `.json` collection, then press **Ctrl+S** to send a request.
+
 ### Embeddings
 
 Compute embeddings for one or more inputs:
@@ -108,6 +121,22 @@ Compute embeddings for one or more inputs:
   --input "The quick brown fox" \
   --input "jumps over the lazy dog" \
   --model text-embedding-ada-002
+```
+
+### Models
+
+List available models you can use with the `--model` flag:
+
+```bash
+./openai-cli models
+```
+
+Output:
+
+```
+o4-mini
+gpt-3.5-turbo
+codex-cli
 ```
 
 ### print-curl and server-url

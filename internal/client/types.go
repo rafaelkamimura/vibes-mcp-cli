@@ -8,6 +8,19 @@ type CompletionsRequest struct {
 	Temperature float64 `json:"temperature,omitempty"`
 }
 
+// Token represents the access token returned by the auth endpoint.
+type Token struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+}
+
+// UserCreate is the registration request payload for creating a new user.
+type UserCreate struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	FullName string `json:"full_name,omitempty"`
+}
+
 // Choice represents a single completion choice.
 type Choice struct {
 	Text         string      `json:"text"`

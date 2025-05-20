@@ -7,18 +7,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"openai-cli/internal/client"
+	"openai-cli/internal/providers"
+	"openai-cli/internal/service"
+	"os"
+	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/spf13/cobra"
-
-	"openai-cli/internal/client"
-	"openai-cli/internal/providers"
-	"openai-cli/internal/service"
 )
 
 // uiChatModel is the chat model used in the UI
-var uiChatModel string
+var (
+	uiChatModel      string
+	uiCollectionPath string
+)
 
 // uiCmd launches a terminal UI for interactive chat
 var uiCmd = &cobra.Command{
@@ -33,27 +40,107 @@ var uiCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(uiCmd)
 	uiCmd.Flags().StringVar(&uiChatModel, "model", "gpt-3.5-turbo", "chat model to use in UI")
+	uiCmd.Flags().StringVar(&uiCollectionPath, "collection", "", "path to Postman collection JSON file to load")
 }
 
 // runUI initializes and runs the TUI
 func runUI() error {
 	app := tview.NewApplication()
+	pages := tview.NewPages()
 	// maintain full conversation context
 	var conversation []client.ChatMessage
 	// declare variables for closure capture
 	var input *tview.InputField
 	var chatView *tview.TextView
+	var dropdown *tview.DropDown
+	var modelDropdown *tview.DropDown
+	// login and registration forms share authentication state
+	var loginForm *tview.Form
+	var registerForm *tview.Form
+	// rememberLogin controls whether a successful login should be saved to config
+	var rememberLogin bool
+	// homeList is the main menu list and updateHomeMenu rebuilds it on auth changes
+	var homeList *tview.List
+	var updateHomeMenu func()
 	// initialize input
 	input = tview.NewInputField().SetLabel("You: ").SetFieldWidth(0)
 	// initialize chat view
 	chatView = tview.NewTextView().SetScrollable(true)
 	chatView.SetBorder(true).SetTitle("MCP Chat UI")
+	templates := cfg.Templates
+	if len(templates) == 0 {
+		templates = []string{
+			"Hey, whats up!",
+			"Hows the weather in Brasilia - DF right now?",
+		}
+	}
+	dropdown = tview.NewDropDown().
+		SetLabel("Templates: ").
+		SetOptions(templates, func(text string, index int) {
+			input.SetText(text)
+			app.SetFocus(input)
+		})
+	dropdown.SetBorder(true).
+		SetTitle("Templates (Esc to cancel)").SetTitleAlign(tview.AlignLeft)
+	dropdown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Map lower-case rune inputs to upper-case for case-insensitive option matching.
+		if event.Key() == tcell.KeyRune {
+			r := event.Rune()
+			u := unicode.ToUpper(r)
+			if u != r {
+				event = tcell.NewEventKey(tcell.KeyRune, u, event.Modifiers())
+			}
+		}
+		switch event.Key() {
+		case tcell.KeyEsc, tcell.KeyTab:
+			app.SetFocus(input)
+			return nil
+		}
+		return event
+	})
+	modelOptions := []string{"o4-mini", "gpt-3.5-turbo", "codex-cli"}
+	var modelIndex int
+	for i, m := range modelOptions {
+		if m == uiChatModel {
+			modelIndex = i
+			break
+		}
+	}
+	modelDropdown = tview.NewDropDown().
+		SetLabel("Model: ").
+		SetOptions(modelOptions, func(text string, index int) {
+			uiChatModel = text
+			app.SetFocus(input)
+		}).
+		SetCurrentOption(modelIndex)
+	modelDropdown.SetBorder(true).
+		SetTitle("Models (Esc to cancel)").SetTitleAlign(tview.AlignLeft)
+	modelDropdown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Map lower-case rune inputs to upper-case for case-insensitive option matching.
+		if event.Key() == tcell.KeyRune {
+			r := event.Rune()
+			u := unicode.ToUpper(r)
+			if u != r {
+				event = tcell.NewEventKey(tcell.KeyRune, u, event.Modifiers())
+			}
+		}
+		switch event.Key() {
+		case tcell.KeyEsc, tcell.KeyTab:
+			app.SetFocus(input)
+			return nil
+		}
+		return event
+	})
 	// track scroll offset for navigation
 	offset := 0
 	// allow Esc to switch focus back to chatView
 	input.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEsc {
+		switch event.Key() {
+		case tcell.KeyEsc:
 			app.SetFocus(chatView)
+			return nil
+		case tcell.KeyTab:
+			app.SetFocus(dropdown)
 			return nil
 		}
 		return event
@@ -84,6 +171,9 @@ func runUI() error {
 		case tcell.KeyEsc: // back to input
 			app.SetFocus(input)
 			return nil
+		case tcell.KeyTab:
+			app.SetFocus(dropdown)
+			return nil
 		}
 		return event
 	})
@@ -113,11 +203,27 @@ func runUI() error {
 			} else {
 				httpReq.Header.Set("Content-Type", "application/json")
 				httpReq.Header.Set("X-Provider", cfg.Provider)
+				if cfg.AuthToken != "" {
+					httpReq.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+				}
 				resp, e := http.DefaultClient.Do(httpReq)
 				if e != nil {
 					err = e
 				} else {
 					defer resp.Body.Close()
+					if resp.StatusCode == http.StatusUnauthorized {
+						modal := tview.NewModal().
+							SetText("Session expired. Please login again.").
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(_ int, _ string) {
+								pages.RemovePage("authModal")
+								cfg.AuthToken = ""
+								pages.SwitchToPage("login")
+								app.SetFocus(loginForm)
+							})
+						pages.AddPage("authModal", modal, true, true)
+						return
+					}
 					if resp.StatusCode != http.StatusOK {
 						body, _ := io.ReadAll(resp.Body)
 						err = fmt.Errorf("status: %d, body: %s", resp.StatusCode, string(body))
@@ -155,12 +261,459 @@ func runUI() error {
 		}
 		chatView.ScrollToEnd()
 	})
-	// Layout
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
+	chatFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(chatView, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(dropdown, 0, 1, false).
+			AddItem(modelDropdown, 0, 1, false), 3, 0, false).
 		AddItem(input, 1, 0, true)
-	// Run
-	if err := app.SetRoot(flex, true).EnableMouse(true).Run(); err != nil {
+
+	agentView := tview.NewTextView().SetScrollable(true)
+	agentView.SetBorder(true).SetTitle("Agent Chat UI")
+	agentInput := tview.NewInputField().SetLabel("You: ").SetFieldWidth(0)
+	agentInput.SetDoneFunc(func(key tcell.Key) {
+		if key != tcell.KeyEnter {
+			return
+		}
+		user := agentInput.GetText()
+		if user == "" {
+			return
+		}
+		fmt.Fprintf(agentView, "You: %s\n", user)
+		agentInput.SetText("")
+		body := map[string]string{"message": user}
+		buf := new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(body); err != nil {
+			fmt.Fprintf(agentView, "Error encoding request: %v\n", err)
+		} else {
+			req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, cfg.AgentURL+"/agent/chat", buf)
+			req.Header.Set("Content-Type", "application/json")
+			if cfg.AuthToken != "" {
+				req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				fmt.Fprintf(agentView, "Error: %v\n", err)
+			} else {
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusUnauthorized {
+					modal := tview.NewModal().
+						SetText("Session expired. Please login again.").
+						AddButtons([]string{"OK"}).
+						SetDoneFunc(func(_ int, _ string) {
+							pages.RemovePage("authModal")
+							cfg.AuthToken = ""
+							pages.SwitchToPage("login")
+							app.SetFocus(loginForm)
+						})
+					pages.AddPage("authModal", modal, true, true)
+				} else if resp.StatusCode != http.StatusOK {
+					bodyBytes, _ := io.ReadAll(resp.Body)
+					fmt.Fprintf(agentView, "Error: status %d: %s\n", resp.StatusCode, string(bodyBytes))
+				} else {
+					var agentResp struct {
+						Response string `json:"response"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&agentResp); err != nil {
+						fmt.Fprintf(agentView, "Error decoding response: %v\n", err)
+					} else {
+						fmt.Fprintf(agentView, "Bot: %s\n", agentResp.Response)
+					}
+				}
+			}
+		}
+		agentView.ScrollToEnd()
+	})
+	agentFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(agentView, 0, 1, false).
+		AddItem(agentInput, 1, 0, true)
+
+	fileBrowser := tview.NewTreeView()
+	fileBrowser.SetBorder(true)
+	fileBrowser.SetTitle("Select Collection (.json)")
+
+	var addNodes func(node *tview.TreeNode, path string)
+	addNodes = func(node *tview.TreeNode, path string) {
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			fullPath := filepath.Join(path, entry.Name())
+			child := tview.NewTreeNode(entry.Name()).
+				SetReference(fullPath).
+				SetSelectable(true)
+			if entry.IsDir() {
+				child.SetColor(tcell.ColorGreen)
+				child.SetExpanded(false)
+				addNodes(child, fullPath)
+			}
+			node.AddChild(child)
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	rootNode := tview.NewTreeNode(cwd).
+		SetReference(cwd).
+		SetColor(tcell.ColorGreen).
+		SetExpanded(true)
+	addNodes(rootNode, cwd)
+	fileBrowser.SetRoot(rootNode).SetCurrentNode(rootNode)
+
+	postmanContent := tview.NewTextView()
+	postmanContent.SetBorder(true)
+	postmanContent.SetTitle("Collection")
+	if uiCollectionPath != "" {
+		postmanContent.Write([]byte(fmt.Sprintf("Loaded collection: %s\n", uiCollectionPath)))
+	} else {
+		postmanContent.Write([]byte("No collection loaded\n"))
+	}
+
+	fileBrowser.SetSelectedFunc(func(node *tview.TreeNode) {
+		ref := node.GetReference().(string)
+		info, err := os.Stat(ref)
+		if err != nil {
+			return
+		}
+		if info.IsDir() {
+			node.SetExpanded(!node.IsExpanded())
+			return
+		}
+		if strings.HasSuffix(strings.ToLower(ref), ".json") {
+			uiCollectionPath = ref
+			postmanContent.Clear()
+			fmt.Fprintf(postmanContent, "Loaded collection: %s\n", uiCollectionPath)
+		}
+	})
+
+	postmanFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(fileBrowser, 0, 1, true).
+		AddItem(postmanContent, 0, 2, false)
+
+	menuTitle := tview.NewTextView()
+	menuTitle.SetDynamicColors(true)
+	menuTitle.SetText("[::b]Menu[::-] (F2)")
+	menuTitle.SetTextAlign(tview.AlignCenter)
+	homeHint := tview.NewTextView()
+	homeHint.SetDynamicColors(true)
+	homeHint.SetText("[::b]Home[::-] (F1)")
+	homeHint.SetTextAlign(tview.AlignCenter)
+	isAuthenticated := cfg.AuthToken != ""
+	modeBar := tview.NewFlex().SetDirection(tview.FlexColumn)
+	currentPage := "home"
+	var updateModeBar func()
+	updateModeBar = func() {
+		modeBar.Clear().
+			AddItem(homeHint, 0, 1, false)
+		if isAuthenticated {
+			modeBar.AddItem(menuTitle, 0, 1, false)
+		}
+	}
+	updateModeBar()
+
+	// Dropdown menu for page navigation
+	menuList := tview.NewList().
+		AddItem("Chat", "Start interactive chat", 'C', func() {
+			currentPage = "chat"
+			pages.SwitchToPage("chat")
+			app.SetFocus(input)
+			updateModeBar()
+			pages.RemovePage("menu")
+		}).
+		AddItem("Postman", "Load Postman collection", 'P', func() {
+			currentPage = "postman"
+			pages.SwitchToPage("postman")
+			app.SetFocus(fileBrowser)
+			updateModeBar()
+			pages.RemovePage("menu")
+		}).
+		AddItem("Agent", "Start agent interactive chat", 'A', func() {
+			currentPage = "agent"
+			pages.SwitchToPage("agent")
+			app.SetFocus(agentInput)
+			updateModeBar()
+			pages.RemovePage("menu")
+		}).
+		AddItem("Cancel", "", 0, func() {
+			pages.RemovePage("menu")
+			switch currentPage {
+			case "chat":
+				app.SetFocus(input)
+			case "postman":
+				app.SetFocus(fileBrowser)
+			case "agent":
+				app.SetFocus(agentInput)
+			default:
+				app.SetFocus(homeList)
+			}
+			updateModeBar()
+		})
+	menuList.SetBorder(true).
+		SetTitle("Menu (Esc to cancel)").SetTitleAlign(tview.AlignCenter).
+		SetBorderPadding(1, 1, 2, 2)
+	menuList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// Map lower-case rune inputs to upper-case for case-insensitive item matching.
+		if event.Key() == tcell.KeyRune {
+			r := event.Rune()
+			u := unicode.ToUpper(r)
+			if u != r {
+				event = tcell.NewEventKey(tcell.KeyRune, u, event.Modifiers())
+			}
+		}
+		if event.Key() == tcell.KeyEsc {
+			pages.RemovePage("menu")
+			switch currentPage {
+			case "chat":
+				app.SetFocus(input)
+			case "postman":
+				app.SetFocus(fileBrowser)
+			case "agent":
+				app.SetFocus(agentInput)
+			default:
+				app.SetFocus(homeList)
+			}
+			updateModeBar()
+			return nil
+		}
+		return event
+	})
+
+	// Login form for authentication
+	loginForm = tview.NewForm()
+	loginForm.AddInputField("Username", "", 20, nil, nil)
+	loginForm.AddPasswordField("Password", "", 20, '*', nil)
+	loginForm.AddCheckbox("Remember me", false, func(checked bool) {
+		rememberLogin = checked
+	})
+	loginForm.AddButton("Login", func() {
+		username := loginForm.GetFormItemByLabel("Username").(*tview.InputField).GetText()
+		password := loginForm.GetFormItemByLabel("Password").(*tview.InputField).GetText()
+		form := url.Values{}
+		form.Set("grant_type", "password")
+		form.Set("username", username)
+		form.Set("password", password)
+		form.Set("scope", "agent:chat")
+		resp, err := http.PostForm(cfg.AgentURL+"/auth/token", form)
+		msg := ""
+		if err != nil {
+			msg = fmt.Sprintf("Error: %v", err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				msg = fmt.Sprintf("Login failed (%d): %s", resp.StatusCode, string(body))
+			} else {
+				var tokenResp client.Token
+				if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+					msg = fmt.Sprintf("Parse error: %v", err)
+				} else {
+					cfg.AuthToken = tokenResp.AccessToken
+					if rememberLogin {
+						if err := cfg.Save(); err != nil {
+							msg = fmt.Sprintf("Login successful, but failed to save token: %v", err)
+						} else {
+							msg = "Login successful (token saved)"
+						}
+					} else {
+						msg = "Login successful"
+					}
+				}
+			}
+		}
+		modal := tview.NewModal().
+			SetText(msg).
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(_ int, _ string) {
+				pages.RemovePage("loginModal")
+				if cfg.AuthToken != "" {
+					isAuthenticated = true
+					updateHomeMenu()
+					updateModeBar()
+					pages.SwitchToPage("home")
+					app.SetFocus(homeList)
+				} else {
+					pages.SwitchToPage("login")
+					app.SetFocus(loginForm)
+				}
+			})
+		pages.AddPage("loginModal", modal, true, true)
+	})
+	loginForm.AddButton("Cancel", func() { app.Stop() })
+	loginForm.SetBorder(true).SetTitle("Login").SetTitleAlign(tview.AlignLeft)
+
+	// Registration form for new users
+	registerForm = tview.NewForm()
+	registerForm.AddInputField("Username", "", 20, nil, nil)
+	registerForm.AddPasswordField("Password", "", 20, '*', nil)
+	registerForm.AddInputField("Full Name", "", 30, nil, nil)
+	registerForm.AddButton("Register", func() {
+		username := registerForm.GetFormItemByLabel("Username").(*tview.InputField).GetText()
+		password := registerForm.GetFormItemByLabel("Password").(*tview.InputField).GetText()
+		fullName := registerForm.GetFormItemByLabel("Full Name").(*tview.InputField).GetText()
+		body := client.UserCreate{Username: username, Password: password, FullName: fullName}
+		buf := new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(body); err != nil {
+			msg := fmt.Sprintf("Encode error: %v", err)
+			modal := tview.NewModal().
+				SetText(msg).
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(_ int, _ string) {
+					pages.RemovePage("registerModal")
+					pages.SwitchToPage("register")
+					app.SetFocus(registerForm)
+				})
+			pages.AddPage("registerModal", modal, true, true)
+			return
+		}
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, cfg.AgentURL+"/users/register", buf)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		msg := ""
+		if err != nil {
+			msg = fmt.Sprintf("Error: %v", err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusCreated {
+				bodyBytes, _ := io.ReadAll(resp.Body)
+				msg = fmt.Sprintf("Register failed (%d): %s", resp.StatusCode, string(bodyBytes))
+			} else {
+				msg = "Registration successful"
+			}
+		}
+		modal := tview.NewModal().
+			SetText(msg).
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(_ int, _ string) {
+				pages.RemovePage("registerModal")
+				if resp != nil && resp.StatusCode == http.StatusCreated {
+					pages.SwitchToPage("login")
+					app.SetFocus(loginForm)
+				} else {
+					pages.SwitchToPage("register")
+					app.SetFocus(registerForm)
+				}
+			})
+		pages.AddPage("registerModal", modal, true, true)
+	})
+	registerForm.AddButton("Cancel", func() { app.Stop() })
+	registerForm.SetBorder(true).SetTitle("Register").SetTitleAlign(tview.AlignLeft)
+
+	homeList = tview.NewList()
+	homeList.SetBorder(true).
+		SetTitle("Home").
+		SetTitleAlign(tview.AlignCenter).
+		SetBorderPadding(1, 1, 2, 2)
+
+	// Helper to (re)build the home menu based on authentication state
+	updateHomeMenu = func() {
+		homeList.Clear()
+		if isAuthenticated {
+			homeList.AddItem("Chat", "Start interactive chat", 'C', func() {
+				currentPage = "chat"
+				pages.SwitchToPage("chat")
+				app.SetFocus(input)
+				updateModeBar()
+			})
+			homeList.AddItem("Agent", "Start agent interactive chat", 'A', func() {
+				currentPage = "agent"
+				pages.SwitchToPage("agent")
+				app.SetFocus(agentInput)
+				updateModeBar()
+			})
+			homeList.AddItem("Postman", "Load Postman collection", 'P', func() {
+				currentPage = "postman"
+				pages.SwitchToPage("postman")
+				app.SetFocus(fileBrowser)
+				updateModeBar()
+			})
+			homeList.AddItem("Logout", "Logout current session", 'O', func() {
+				isAuthenticated = false
+				cfg.AuthToken = ""
+				updateModeBar()
+				updateHomeMenu()
+				pages.SwitchToPage("login")
+				app.SetFocus(loginForm)
+			})
+		} else {
+			homeList.AddItem("Login", "Authenticate with Agent", 'L', func() {
+				pages.SwitchToPage("login")
+				app.SetFocus(loginForm)
+			})
+			homeList.AddItem("Register", "Create new account", 'R', func() {
+				pages.SwitchToPage("register")
+				app.SetFocus(registerForm)
+			})
+		}
+		homeList.AddItem("Quit", "Exit application", 'Q', func() {
+			app.Stop()
+		})
+	}
+	updateHomeMenu()
+	// Convert lower-case rune inputs to upper-case to make menu shortcuts case-insensitive.
+	homeList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyRune {
+			r := event.Rune()
+			u := unicode.ToUpper(r)
+			if u != r {
+				return tcell.NewEventKey(tcell.KeyRune, u, event.Modifiers())
+			}
+		}
+		return event
+	})
+
+	pages = pages.
+		AddPage("home", homeList, true, true).
+		AddPage("login", loginForm, true, false).
+		AddPage("register", registerForm, true, false).
+		AddPage("chat", chatFlex, true, false).
+		AddPage("agent", agentFlex, true, false).
+		AddPage("postman", postmanFlex, true, false)
+
+	// Initial authentication: require login on startup
+	if !isAuthenticated {
+		pages.SwitchToPage("login")
+		app.SetFocus(loginForm)
+	}
+
+	// header banner
+	header := tview.NewTextView()
+	header.SetDynamicColors(true)
+	header.SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	header.SetTitle(" Vibes CLI UI Home ")
+	header.SetTitleAlign(tview.AlignCenter)
+	header.SetText("🌊 [::b]Vibes CLI UI Home[::-] 🌊")
+	header.SetBorderPadding(1, 1, 2, 2)
+
+	root := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(header, 5, 0, false).
+		AddItem(modeBar, 1, 0, false).
+		AddItem(pages, 0, 1, true)
+
+	root.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyF1:
+			currentPage = "home"
+			pages.SwitchToPage("home")
+			app.SetFocus(homeList)
+			updateModeBar()
+			return nil
+		case tcell.KeyF2:
+			if isAuthenticated {
+				pages.RemovePage("menu")
+				pages.AddPage("menu", menuList, true, true)
+				app.SetFocus(menuList)
+			}
+			return nil
+		case tcell.KeyCtrlS:
+			return nil
+		}
+		return event
+	})
+
+	if err := app.SetRoot(root, true).EnableMouse(true).Run(); err != nil {
 		return err
 	}
 	return nil
