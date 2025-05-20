@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +46,7 @@ func init() {
 // runUI initializes and runs the TUI
 func runUI() error {
 	app := tview.NewApplication()
+	pages := tview.NewPages()
 	// maintain full conversation context
 	var conversation []client.ChatMessage
 	// declare variables for closure capture
@@ -298,8 +300,122 @@ func runUI() error {
 		AddItem(chatTitle, 0, 1, false).
 		AddItem(postmanTitle, 0, 1, false)
 
-	pages := tview.NewPages().
-		AddPage("chat", chatFlex, true, true).
+	// Login form for authentication
+	loginForm := tview.NewForm()
+	loginForm.AddInputField("Username", "", 20, nil, nil)
+	loginForm.AddPasswordField("Password", "", 20, '*', nil)
+	loginForm.AddButton("Login", func() {
+		username := loginForm.GetFormItemByLabel("Username").(*tview.InputField).GetText()
+		password := loginForm.GetFormItemByLabel("Password").(*tview.InputField).GetText()
+		form := url.Values{}
+		form.Set("grant_type", "password")
+		form.Set("username", username)
+		form.Set("password", password)
+		resp, err := http.PostForm(cfg.AgentURL+"/auth/token", form)
+		msg := ""
+		if err != nil {
+			msg = fmt.Sprintf("Error: %v", err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				body, _ := io.ReadAll(resp.Body)
+				msg = fmt.Sprintf("Login failed (%d): %s", resp.StatusCode, string(body))
+			} else {
+				var tokenResp client.Token
+				if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+					msg = fmt.Sprintf("Parse error: %v", err)
+				} else {
+					cfg.AuthToken = tokenResp.AccessToken
+					msg = "Login successful"
+				}
+			}
+		}
+		modal := tview.NewModal().
+			SetText(msg).
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(_ int, _ string) {
+				pages.RemovePage("loginModal")
+				pages.SwitchToPage("home")
+			})
+		pages.AddPage("loginModal", modal, true, true)
+	})
+	loginForm.AddButton("Cancel", func() { pages.SwitchToPage("home") })
+	loginForm.SetBorder(true).SetTitle("Login").SetTitleAlign(tview.AlignLeft)
+
+	// Registration form for new users
+	registerForm := tview.NewForm()
+	registerForm.AddInputField("Username", "", 20, nil, nil)
+	registerForm.AddPasswordField("Password", "", 20, '*', nil)
+	registerForm.AddInputField("Full Name", "", 30, nil, nil)
+	registerForm.AddButton("Register", func() {
+		username := registerForm.GetFormItemByLabel("Username").(*tview.InputField).GetText()
+		password := registerForm.GetFormItemByLabel("Password").(*tview.InputField).GetText()
+		fullName := registerForm.GetFormItemByLabel("Full Name").(*tview.InputField).GetText()
+		body := client.UserCreate{Username: username, Password: password, FullName: fullName}
+		buf := new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(body); err != nil {
+			msg := fmt.Sprintf("Encode error: %v", err)
+			modal := tview.NewModal().
+				SetText(msg).
+				AddButtons([]string{"OK"}).
+				SetDoneFunc(func(_ int, _ string) {
+					pages.RemovePage("registerModal")
+					pages.SwitchToPage("home")
+				})
+			pages.AddPage("registerModal", modal, true, true)
+			return
+		}
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, cfg.AgentURL+"/users/register", buf)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		msg := ""
+		if err != nil {
+			msg = fmt.Sprintf("Error: %v", err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusCreated {
+				bodyBytes, _ := io.ReadAll(resp.Body)
+				msg = fmt.Sprintf("Register failed (%d): %s", resp.StatusCode, string(bodyBytes))
+			} else {
+				msg = "Registration successful"
+			}
+		}
+		modal := tview.NewModal().
+			SetText(msg).
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(_ int, _ string) {
+				pages.RemovePage("registerModal")
+				pages.SwitchToPage("home")
+			})
+		pages.AddPage("registerModal", modal, true, true)
+	})
+	registerForm.AddButton("Cancel", func() { pages.SwitchToPage("home") })
+	registerForm.SetBorder(true).SetTitle("Register").SetTitleAlign(tview.AlignLeft)
+
+	homeList := tview.NewList().
+		ShowSecondaryText(false).
+		AddItem("Login", "Authenticate with Agent", 'l', func() {
+			pages.SwitchToPage("login")
+		}).
+		AddItem("Register", "Create new account", 'r', func() {
+			pages.SwitchToPage("register")
+		}).
+		AddItem("Chat", "Start interactive chat", 'c', func() {
+			pages.SwitchToPage("chat")
+		}).
+		AddItem("Postman", "Load Postman collection", 'p', func() {
+			pages.SwitchToPage("postman")
+		}).
+		AddItem("Quit", "Exit application", 'q', func() {
+			app.Stop()
+		})
+	homeList.SetBorder(true).SetTitle("Home")
+
+	pages = pages.
+		AddPage("home", homeList, true, true).
+		AddPage("login", loginForm, true, false).
+		AddPage("register", registerForm, true, false).
+		AddPage("chat", chatFlex, true, false).
 		AddPage("postman", postmanFlex, true, false)
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
