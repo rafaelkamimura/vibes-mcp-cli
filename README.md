@@ -25,6 +25,9 @@
    base_url: "https://api.openai.com"
    provider: "openai"
    log_level: "info"
+   templates:
+     - "Hey, what's up!"
+     - "Hows the weather in Brasilia - DF right now?"
    ```
 5. Build:
    ```bash
@@ -108,6 +111,22 @@ Compute embeddings for one or more inputs:
   --input "The quick brown fox" \
   --input "jumps over the lazy dog" \
   --model text-embedding-ada-002
+```
+
+### Models
+
+List available models you can use with the `--model` flag:
+
+```bash
+./openai-cli models
+```
+
+Output:
+
+```
+o4-mini
+gpt-3.5-turbo
+codex-cli
 ```
 
 ### print-curl and server-url

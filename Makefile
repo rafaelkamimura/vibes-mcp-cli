@@ -8,7 +8,7 @@ init:
 	go mod tidy
 
 build:
-	go build -o openai-cli
+	go build -o vibes-mcp-cli
 
 test:
 	go test ./internal/client ./internal/service ./cmd
@@ -18,7 +18,7 @@ lint:
 	go vet ./...
 
 docker-build:
-	docker build -t openai-cli:latest .
+	docker build -t vibes-mcp-cli:latest .
 
 docker-up:
 	@docker-compose up --build
@@ -37,7 +37,7 @@ release:
 	for target in $(RELEASE_OSARCH); do \
 		OS=$${target%%/*}; ARCH=$${target##*/}; \
 		EXT=""; if [ "$$OS" = "windows" ]; then EXT=".exe"; fi; \
-		BIN=dist/openai-cli-$$VERSION-$$OS-$$ARCH$$EXT; \
+		BIN=dist/vibes-mcp-cli-$$VERSION-$$OS-$$ARCH$$EXT; \
 		echo "> $$OS/$$ARCH -> $$BIN"; \
 		GOOS=$${OS} GOARCH=$${ARCH} go build -ldflags='-s -w' -o $$BIN .; \
 	done; \
@@ -45,4 +45,4 @@ release:
 	git push origin $$VERSION
 
 clean:
-	rm -f openai-cli
+	rm -f vibes-mcp-cli

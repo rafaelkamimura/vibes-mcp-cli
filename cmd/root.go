@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -28,8 +29,25 @@ var (
 	printCurl bool
 )
 
-// rootCmd is the base command for openai-cli
+// rootCmd is the base command for the CLI
+// getProjectName derives the CLI name from the invoked executable's basename.
+func getProjectName() string {
+	if exePath, err := os.Executable(); err == nil {
+		name := filepath.Base(exePath)
+		if ext := filepath.Ext(name); ext != "" {
+			name = name[:len(name)-len(ext)]
+		}
+		return name
+	}
+	name := filepath.Base(os.Args[0])
+	if ext := filepath.Ext(name); ext != "" {
+		name = name[:len(name)-len(ext)]
+	}
+	return name
+}
+
 var rootCmd = &cobra.Command{
+	// Use is overridden at init to match the git repository name
 	Use:   "openai-cli",
 	Short: "CLI for OpenAI API",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -79,7 +97,10 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.openai-cli.yaml)")
+	// override CLI use name based on repository
+	projectName := getProjectName()
+	rootCmd.Use = projectName
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", fmt.Sprintf("config file (default is $HOME/.%s.yaml)", projectName))
 	rootCmd.PersistentFlags().StringVar(&providerFlag, "provider", "", "provider to use (overrides config: openai, anthropic)")
 	rootCmd.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "API key (overrides config/env)")
 	rootCmd.PersistentFlags().StringVar(&baseURLFlag, "base-url", "", "API base URL (overrides config/env)")

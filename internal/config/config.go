@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -19,12 +20,19 @@ type Config struct {
 	Provider string
 	// LogLevel sets the logging level (debug, info, warn, error)
 	LogLevel string
+	// Templates defines a list of prompt templates for the UI dropdown.
+	Templates []string
 }
 
 // LoadConfig reads config from file or environment.
 func LoadConfig(cfgFile string) (*Config, error) {
-	// Load environment variables from .env if available
-	_ = godotenv.Load()
+	// Load environment variables from .env in binary dir and current working dir
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		_ = godotenv.Load(filepath.Join(exeDir, ".env"), ".env")
+	} else {
+		_ = godotenv.Load(".env")
+	}
 	v := viper.New()
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
@@ -62,10 +70,11 @@ func LoadConfig(cfgFile string) (*Config, error) {
 		burl = os.Getenv("OPENAI_BASE_URL")
 	}
 	cfg := &Config{
-		APIKey:   ack,
-		BaseURL:  burl,
-		Provider: v.GetString("provider"),
-		LogLevel: v.GetString("log_level"),
+		APIKey:    ack,
+		BaseURL:   burl,
+		Provider:  v.GetString("provider"),
+		LogLevel:  v.GetString("log_level"),
+		Templates: v.GetStringSlice("templates"),
 	}
 	return cfg, nil
 }
