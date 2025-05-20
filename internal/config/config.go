@@ -9,6 +9,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+const defaultConfigName = ".openai-cli"
+
 // Config holds application settings.
 // Config holds application settings.
 type Config struct {
@@ -26,6 +28,27 @@ type Config struct {
 	AgentURL string
 	// AuthToken is the JWT access token obtained after login
 	AuthToken string
+
+	// viper instance for saving config (auth token)
+	v *viper.Viper
+	// path to the config file used or specified, for persisting settings
+	configFile string
+}
+
+// Save writes the current configuration (including AuthToken) to the config file.
+func (c *Config) Save() error {
+	c.v.Set("auth_token", c.AuthToken)
+
+	configFile := c.configFile
+	if configFile == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configFile = filepath.Join(homeDir, defaultConfigName+".yaml")
+		c.configFile = configFile
+	}
+	return c.v.WriteConfigAs(configFile)
 }
 
 // LoadConfig reads config from file or environment.
@@ -41,7 +64,7 @@ func LoadConfig(cfgFile string) (*Config, error) {
 	if cfgFile != "" {
 		v.SetConfigFile(cfgFile)
 	} else {
-		v.SetConfigName(".openai-cli")
+		v.SetConfigName(defaultConfigName)
 		// search for config in current directory first, then home directory
 		v.AddConfigPath(".")
 		v.AddConfigPath(os.ExpandEnv("$HOME"))
@@ -79,14 +102,22 @@ func LoadConfig(cfgFile string) (*Config, error) {
 	agentURL := v.GetString("agent_url")
 	authToken := v.GetString("auth_token")
 
+	// determine config file path for saving (if loaded or provided via flag)
+	configFileUsed := v.ConfigFileUsed()
+	if configFileUsed == "" && cfgFile != "" {
+		configFileUsed = cfgFile
+	}
+
 	cfg := &Config{
-		APIKey:    ack,
-		BaseURL:   burl,
-		Provider:  v.GetString("provider"),
-		LogLevel:  v.GetString("log_level"),
-		Templates: v.GetStringSlice("templates"),
-		AgentURL:  agentURL,
-		AuthToken: authToken,
+		APIKey:     ack,
+		BaseURL:    burl,
+		Provider:   v.GetString("provider"),
+		LogLevel:   v.GetString("log_level"),
+		Templates:  v.GetStringSlice("templates"),
+		AgentURL:   agentURL,
+		AuthToken:  authToken,
+		v:          v,
+		configFile: configFileUsed,
 	}
 	return cfg, nil
 }

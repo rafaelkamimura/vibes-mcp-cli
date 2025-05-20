@@ -5,3 +5,5 @@ api_key: "YOUR_OPENAI_API_KEY"
 base_url: "https://api.openai.com"
 provider: "openai"
 log_level: "info"
+# Optional: JWT auth token for Vibes Agent backend to persist login
+auth_token: "YOUR_AGENT_AUTH_TOKEN"

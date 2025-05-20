@@ -25,6 +25,8 @@
    base_url: "https://api.openai.com"
    provider: "openai"
    log_level: "info"
+   # Optional: JWT auth token for Vibes Agent backend to persist login
+   auth_token: "your-agent-auth-token"
    templates:
      - "Hey, what's up!"
      - "Hows the weather in Brasilia - DF right now?"

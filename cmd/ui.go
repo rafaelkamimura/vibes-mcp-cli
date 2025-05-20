@@ -8,6 +8,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"openai-cli/internal/client"
+	"openai-cli/internal/providers"
+	"openai-cli/internal/service"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,10 +19,6 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"github.com/spf13/cobra"
-
-	"openai-cli/internal/client"
-	"openai-cli/internal/providers"
-	"openai-cli/internal/service"
 )
 
 // uiChatModel is the chat model used in the UI
@@ -58,6 +57,8 @@ func runUI() error {
 	// login and registration forms share authentication state
 	var loginForm *tview.Form
 	var registerForm *tview.Form
+	// rememberLogin controls whether a successful login should be saved to config
+	var rememberLogin bool
 	// homeList is the main menu list and updateHomeMenu rebuilds it on auth changes
 	var homeList *tview.List
 	var updateHomeMenu func()
@@ -391,12 +392,14 @@ func runUI() error {
 		AddItem(fileBrowser, 0, 1, true).
 		AddItem(postmanContent, 0, 2, false)
 
-	menuTitle := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText("[::b]Menu[::-] (F1)")
-	homeHint := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText("[::b]Home[::-] (ESC)")
+	menuTitle := tview.NewTextView()
+	menuTitle.SetDynamicColors(true)
+	menuTitle.SetText("[::b]Menu[::-] (F2)")
+	menuTitle.SetTextAlign(tview.AlignCenter)
+	homeHint := tview.NewTextView()
+	homeHint.SetDynamicColors(true)
+	homeHint.SetText("[::b]Home[::-] (F1)")
+	homeHint.SetTextAlign(tview.AlignCenter)
 	isAuthenticated := cfg.AuthToken != ""
 	modeBar := tview.NewFlex().SetDirection(tview.FlexColumn)
 	currentPage := "home"
@@ -448,7 +451,8 @@ func runUI() error {
 			updateModeBar()
 		})
 	menuList.SetBorder(true).
-		SetTitle("Menu (Esc to cancel)").SetTitleAlign(tview.AlignLeft)
+		SetTitle("Menu (Esc to cancel)").SetTitleAlign(tview.AlignCenter).
+		SetBorderPadding(1, 1, 2, 2)
 	menuList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		// Map lower-case rune inputs to upper-case for case-insensitive item matching.
 		if event.Key() == tcell.KeyRune {
@@ -480,6 +484,9 @@ func runUI() error {
 	loginForm = tview.NewForm()
 	loginForm.AddInputField("Username", "", 20, nil, nil)
 	loginForm.AddPasswordField("Password", "", 20, '*', nil)
+	loginForm.AddCheckbox("Remember me", false, func(checked bool) {
+		rememberLogin = checked
+	})
 	loginForm.AddButton("Login", func() {
 		username := loginForm.GetFormItemByLabel("Username").(*tview.InputField).GetText()
 		password := loginForm.GetFormItemByLabel("Password").(*tview.InputField).GetText()
@@ -503,7 +510,15 @@ func runUI() error {
 					msg = fmt.Sprintf("Parse error: %v", err)
 				} else {
 					cfg.AuthToken = tokenResp.AccessToken
-					msg = "Login successful"
+					if rememberLogin {
+						if err := cfg.Save(); err != nil {
+							msg = fmt.Sprintf("Login successful, but failed to save token: %v", err)
+						} else {
+							msg = "Login successful (token saved)"
+						}
+					} else {
+						msg = "Login successful"
+					}
 				}
 			}
 		}
@@ -586,7 +601,10 @@ func runUI() error {
 	registerForm.SetBorder(true).SetTitle("Register").SetTitleAlign(tview.AlignLeft)
 
 	homeList = tview.NewList()
-	homeList.SetBorder(true).SetTitle("Home")
+	homeList.SetBorder(true).
+		SetTitle("Home").
+		SetTitleAlign(tview.AlignCenter).
+		SetBorderPadding(1, 1, 2, 2)
 
 	// Helper to (re)build the home menu based on authentication state
 	updateHomeMenu = func() {
@@ -660,25 +678,29 @@ func runUI() error {
 	}
 
 	// header banner
-	header := tview.NewTextView().
-		SetDynamicColors(true).
-		SetTextAlign(tview.AlignCenter).
-		SetText("🌊 [::b]Vibes CLI UI Home[::-] 🌊")
+	header := tview.NewTextView()
+	header.SetDynamicColors(true)
+	header.SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	header.SetTitle(" Vibes CLI UI Home ")
+	header.SetTitleAlign(tview.AlignCenter)
+	header.SetText("🌊 [::b]Vibes CLI UI Home[::-] 🌊")
+	header.SetBorderPadding(1, 1, 2, 2)
 
 	root := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(header, 1, 0, false).
+		AddItem(header, 5, 0, false).
 		AddItem(modeBar, 1, 0, false).
 		AddItem(pages, 0, 1, true)
 
 	root.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
-		case tcell.KeyEsc:
+		case tcell.KeyF1:
 			currentPage = "home"
 			pages.SwitchToPage("home")
 			app.SetFocus(homeList)
 			updateModeBar()
 			return nil
-		case tcell.KeyF1:
+		case tcell.KeyF2:
 			if isAuthenticated {
 				pages.RemovePage("menu")
 				pages.AddPage("menu", menuList, true, true)
