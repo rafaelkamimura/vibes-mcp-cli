@@ -491,11 +491,10 @@ func runUI() error {
 		username := loginForm.GetFormItemByLabel("Username").(*tview.InputField).GetText()
 		password := loginForm.GetFormItemByLabel("Password").(*tview.InputField).GetText()
 		form := url.Values{}
-		form.Set("grant_type", "password")
 		form.Set("username", username)
 		form.Set("password", password)
 		form.Set("scope", "agent:chat")
-		resp, err := http.PostForm(cfg.AgentURL+"/auth/token", form)
+		resp, err := http.PostForm(cfg.AgentURL+"/auth/login", form)
 		msg := ""
 		if err != nil {
 			msg = fmt.Sprintf("Error: %v", err)
@@ -567,7 +566,7 @@ func runUI() error {
 			pages.AddPage("registerModal", modal, true, true)
 			return
 		}
-		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, cfg.AgentURL+"/users/register", buf)
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, cfg.AgentURL+"/auth/register", buf)
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		msg := ""
