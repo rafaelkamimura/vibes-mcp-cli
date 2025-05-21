@@ -1,14 +1,13 @@
 package client
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"strconv"
-	"time"
+   "bytes"
+   "context"
+   "encoding/json"
+   "fmt"
+   "net/http"
+   "strconv"
+   "time"
 )
 
 // HTTPClient defines the interface for HTTP operations.
@@ -93,10 +92,9 @@ func (c *Client) CreateCompletion(ctx context.Context, reqData CompletionsReques
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("non-200 status code: %d, body: %s", resp.StatusCode, string(data))
-	}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+		}
 	var cResp CompletionsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 		return nil, err
@@ -122,10 +120,9 @@ func (c *Client) CreateChatCompletion(ctx context.Context, reqData ChatCompletio
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("non-200 status code: %d, body: %s", resp.StatusCode, string(data))
-	}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+		}
 	var cResp ChatCompletionsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 		return nil, err
@@ -151,10 +148,9 @@ func (c *Client) CreateEmbedding(ctx context.Context, reqData EmbeddingRequest) 
 		return nil, err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("non-200 status code: %d, body: %s", resp.StatusCode, string(data))
-	}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+		}
 	var eResp EmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&eResp); err != nil {
 		return nil, err

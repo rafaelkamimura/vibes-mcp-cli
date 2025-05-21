@@ -1,24 +1,27 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"openai-cli/internal/client"
-	"openai-cli/internal/providers"
-	"openai-cli/internal/service"
-	"os"
-	"path/filepath"
-	"strings"
-	"unicode"
+   "bytes"
+   "context"
+   "encoding/json"
+   "fmt"
+   "io"
+   "net/http"
+   "net/url"
+   "os"
+   "path/filepath"
+   "strings"
+   "time"
+   "unicode"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-	"github.com/spf13/cobra"
+   "openai-cli/internal/client"
+   "openai-cli/internal/mcp"
+   "openai-cli/internal/providers"
+   "openai-cli/internal/service"
+
+   "github.com/gdamore/tcell/v2"
+   "github.com/rivo/tview"
+   "github.com/spf13/cobra"
 )
 
 // uiChatModel is the chat model used in the UI
@@ -45,7 +48,11 @@ func init() {
 
 // runUI initializes and runs the TUI
 func runUI() error {
-	app := tview.NewApplication()
+   // Ensure MCP server URL defaults to Agent backend if not explicitly set
+   if serverURL == "" {
+       serverURL = cfg.AgentURL
+   }
+   app := tview.NewApplication()
 	pages := tview.NewPages()
 	// maintain full conversation context
 	var conversation []client.ChatMessage
@@ -328,6 +335,59 @@ func runUI() error {
 		AddItem(agentView, 0, 1, false).
 		AddItem(agentInput, 1, 0, true)
 
+	// MCP view for JSON-RPC tool calls
+	mcpView := tview.NewTextView().SetScrollable(true)
+	mcpView.SetBorder(true).SetTitle("MCP Tool").SetTitleAlign(tview.AlignLeft)
+	mcpInput := tview.NewInputField().SetLabel("Input: ").SetFieldWidth(0)
+	mcpInput.SetDoneFunc(func(key tcell.Key) {
+		if key != tcell.KeyEnter {
+			return
+		}
+		inputText := mcpInput.GetText()
+		if inputText == "" {
+			return
+		}
+		fmt.Fprintf(mcpView, "You: %s\n", inputText)
+		mcpInput.SetText("")
+		traceID := fmt.Sprintf("%d", time.Now().UnixNano())
+		// choose MCP server URL if provided, else use Agent backend
+		var mcpClient *mcp.Client
+		if serverURL != "" {
+			mcpClient = mcp.NewClient(serverURL, cfg.AuthToken)
+		} else {
+			mcpClient = mcp.NewClient(cfg.AgentURL, cfg.AuthToken)
+		}
+		result, err := mcpClient.CallTool(context.Background(), inputText, traceID)
+		if err != nil {
+			fmt.Fprintf(mcpView, "Error: %v\n", err)
+		} else {
+			fmt.Fprintf(mcpView, "Result: %s\n", result)
+		}
+		mcpView.ScrollToEnd()
+	})
+	// Tools dropdown for selecting available MCP tools
+	toolDropdown := tview.NewDropDown().
+		SetLabel("Tool: ").
+		SetOptions(cfg.Tools, func(text string, index int) {
+			mcpInput.SetText(text + " ")
+			app.SetFocus(mcpInput)
+		}).
+		SetCurrentOption(0)
+	toolDropdown.SetBorder(true).
+		SetTitle("Tools (Esc to cancel)").SetTitleAlign(tview.AlignLeft)
+	toolDropdown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc || event.Key() == tcell.KeyTab {
+			app.SetFocus(mcpInput)
+			return nil
+		}
+		return event
+	})
+	// Layout for MCP view: results, tools dropdown, and input
+	mcpFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(mcpView, 0, 1, false).
+		AddItem(toolDropdown, 3, 0, false).
+		AddItem(mcpInput, 1, 0, true)
+
 	fileBrowser := tview.NewTreeView()
 	fileBrowser.SetBorder(true)
 	fileBrowser.SetTitle("Select Collection (.json)")
@@ -388,9 +448,9 @@ func runUI() error {
 		}
 	})
 
-	postmanFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(fileBrowser, 0, 1, true).
-		AddItem(postmanContent, 0, 2, false)
+   postmanFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
+       AddItem(fileBrowser, 0, 1, true).
+       AddItem(postmanContent, 0, 2, false)
 
 	menuTitle := tview.NewTextView()
 	menuTitle.SetDynamicColors(true)
@@ -411,10 +471,63 @@ func runUI() error {
 			modeBar.AddItem(menuTitle, 0, 1, false)
 		}
 	}
-	updateModeBar()
+   updateModeBar()
+  // Settings menu list and Tenants subpage
+  settingsList := tview.NewList()
+  tenantsList := tview.NewList()
+  // Helper to load tenants
+  loadTenants := func() {
+      tenantsList.Clear()
+      req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, cfg.AgentURL+"/user/tenants", nil)
+      if err != nil {
+          tenantsList.AddItem("Error: invalid request", "", 0, nil)
+      } else {
+          req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+          resp, err := http.DefaultClient.Do(req)
+          if err != nil {
+              tenantsList.AddItem("Error: fetch failed", "", 0, nil)
+          } else {
+              defer resp.Body.Close()
+              if resp.StatusCode != http.StatusOK {
+                  tenantsList.AddItem(fmt.Sprintf("Error: status %d", resp.StatusCode), "", 0, nil)
+              } else {
+                  var list []struct{ID, Name string}
+                  if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+                      tenantsList.AddItem("Error: decode failed", "", 0, nil)
+                  } else {
+                      for _, t := range list {
+                          tenantsList.AddItem(fmt.Sprintf("%s (%s)", t.Name, t.ID), "", 0, nil)
+                      }
+                  }
+              }
+          }
+      }
+      tenantsList.AddItem("Back", "Return to Settings", 'B', func() {
+          currentPage = "settings"
+          pages.SwitchToPage("settings")
+          app.SetFocus(settingsList)
+          updateModeBar()
+      })
+  }
+  settingsList.
+      AddItem("View Tenants", "List all tenants", 'T', func() {
+          loadTenants()
+          currentPage = "settingsTenants"
+          pages.SwitchToPage("settingsTenants")
+          app.SetFocus(tenantsList)
+          updateModeBar()
+      }).
+      AddItem("Back", "Return to Home", 'B', func() {
+          currentPage = "home"
+          pages.SwitchToPage("home")
+          app.SetFocus(homeList)
+          updateModeBar()
+      })
+  settingsList.SetBorder(true).SetTitle("Settings").SetTitleAlign(tview.AlignCenter)
+  tenantsList.SetBorder(true).SetTitle("Tenants").SetTitleAlign(tview.AlignLeft)
 
-	// Dropdown menu for page navigation
-	menuList := tview.NewList().
+   // Dropdown menu for page navigation
+   menuList := tview.NewList().
 		AddItem("Chat", "Start interactive chat", 'C', func() {
 			currentPage = "chat"
 			pages.SwitchToPage("chat")
@@ -429,22 +542,37 @@ func runUI() error {
 			updateModeBar()
 			pages.RemovePage("menu")
 		}).
-		AddItem("Agent", "Start agent interactive chat", 'A', func() {
-			currentPage = "agent"
-			pages.SwitchToPage("agent")
-			app.SetFocus(agentInput)
-			updateModeBar()
-			pages.RemovePage("menu")
-		}).
-		AddItem("Cancel", "", 0, func() {
+       AddItem("Agent", "Start agent interactive chat", 'A', func() {
+           currentPage = "agent"
+           pages.SwitchToPage("agent")
+           app.SetFocus(agentInput)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("MCP", "Invoke JSON-RPC tool", 'M', func() {
+           currentPage = "mcp"
+           pages.SwitchToPage("mcp")
+           app.SetFocus(mcpInput)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("Settings", "Admin settings", 'S', func() {
+           pages.SwitchToPage("settings")
+           app.SetFocus(settingsList)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("Cancel", "", 0, func() {
 			pages.RemovePage("menu")
 			switch currentPage {
 			case "chat":
 				app.SetFocus(input)
 			case "postman":
 				app.SetFocus(fileBrowser)
-			case "agent":
-				app.SetFocus(agentInput)
+       		case "agent":
+       			app.SetFocus(agentInput)
+       		case "mcp":
+       			app.SetFocus(mcpInput)
 			default:
 				app.SetFocus(homeList)
 			}
@@ -471,6 +599,8 @@ func runUI() error {
 				app.SetFocus(fileBrowser)
 			case "agent":
 				app.SetFocus(agentInput)
+			case "mcp":
+				app.SetFocus(mcpInput)
 			default:
 				app.SetFocus(homeList)
 			}
@@ -668,6 +798,9 @@ func runUI() error {
 		AddPage("register", registerForm, true, false).
 		AddPage("chat", chatFlex, true, false).
 		AddPage("agent", agentFlex, true, false).
+		AddPage("mcp", mcpFlex, true, false).
+		AddPage("settings", settingsList, true, false).
+		AddPage("settingsTenants", tenantsList, true, false).
 		AddPage("postman", postmanFlex, true, false)
 
 	// Initial authentication: require login on startup
