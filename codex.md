@@ -64,7 +64,7 @@ We are building a Go-based CLI connector to the OpenAI API, providing a type-saf
 
 ## Next Steps
 - Observability: integrate Prometheus metrics into the MCP server and expose `/metrics` endpoint.
-- TUI Refinements: enhance vim-style scrolling and UI styling.
+- TUI Enhancements: add a full file Explorer (F3) with MCP filesystem integration for reading and patching files, plus vim-style scrolling and UI styling.
 - CI/CD: configure automated pipelines for linting, testing, and Docker builds.
 - Release: automate binary releases (Homebrew, GitHub Releases).
 - Plugin Architecture: enable pluggable providers for extensibility.
