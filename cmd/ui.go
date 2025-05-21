@@ -1,30 +1,32 @@
 package cmd
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"openai-cli/internal/client"
-	"openai-cli/internal/providers"
-	"openai-cli/internal/service"
-	"os"
-	"path/filepath"
-	"strings"
-	"unicode"
+   "bytes"
+   "context"
+   "encoding/json"
+   "fmt"
+   "io"
+   "net/http"
+   "net/url"
+   "os"
+   "path/filepath"
+   "time"
+   "unicode"
 
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
-	"github.com/spf13/cobra"
+   "openai-cli/internal/client"
+   "openai-cli/internal/mcp"
+   "openai-cli/internal/providers"
+   "openai-cli/internal/service"
+
+   "github.com/gdamore/tcell/v2"
+   "github.com/rivo/tview"
+   "github.com/spf13/cobra"
 )
 
 // uiChatModel is the chat model used in the UI
 var (
-	uiChatModel      string
-	uiCollectionPath string
+   uiChatModel     string
+   uiExplorerRoot  string
 )
 
 // uiCmd launches a terminal UI for interactive chat
@@ -40,12 +42,16 @@ var uiCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(uiCmd)
 	uiCmd.Flags().StringVar(&uiChatModel, "model", "gpt-3.5-turbo", "chat model to use in UI")
-	uiCmd.Flags().StringVar(&uiCollectionPath, "collection", "", "path to Postman collection JSON file to load")
+	uiCmd.Flags().StringVar(&uiExplorerRoot, "explorer-root", "", "root path for file explorer")
 }
 
 // runUI initializes and runs the TUI
 func runUI() error {
-	app := tview.NewApplication()
+   // Ensure MCP server URL defaults to Agent backend if not explicitly set
+   if serverURL == "" {
+       serverURL = cfg.AgentURL
+   }
+   app := tview.NewApplication()
 	pages := tview.NewPages()
 	// maintain full conversation context
 	var conversation []client.ChatMessage
@@ -54,9 +60,16 @@ func runUI() error {
 	var chatView *tview.TextView
 	var dropdown *tview.DropDown
 	var modelDropdown *tview.DropDown
-	// login and registration forms share authentication state
-	var loginForm *tview.Form
-	var registerForm *tview.Form
+   // login and registration forms share authentication state
+   var loginForm *tview.Form
+   var registerForm *tview.Form
+   // file explorer components
+   var explorerTree *tview.TreeView
+   var fileContentView *tview.TextView
+   var explorerFlex *tview.Flex
+   var explorerHint *tview.TextView
+   // track current page
+   var currentPage string
 	// rememberLogin controls whether a successful login should be saved to config
 	var rememberLogin bool
 	// homeList is the main menu list and updateHomeMenu rebuilds it on auth changes
@@ -328,69 +341,155 @@ func runUI() error {
 		AddItem(agentView, 0, 1, false).
 		AddItem(agentInput, 1, 0, true)
 
-	fileBrowser := tview.NewTreeView()
-	fileBrowser.SetBorder(true)
-	fileBrowser.SetTitle("Select Collection (.json)")
-
-	var addNodes func(node *tview.TreeNode, path string)
-	addNodes = func(node *tview.TreeNode, path string) {
-		entries, err := os.ReadDir(path)
+	// MCP view for JSON-RPC tool calls
+	mcpView := tview.NewTextView().SetScrollable(true)
+	mcpView.SetBorder(true).SetTitle("MCP Tool").SetTitleAlign(tview.AlignLeft)
+	mcpInput := tview.NewInputField().SetLabel("Input: ").SetFieldWidth(0)
+	mcpInput.SetDoneFunc(func(key tcell.Key) {
+		if key != tcell.KeyEnter {
+			return
+		}
+		inputText := mcpInput.GetText()
+		if inputText == "" {
+			return
+		}
+		fmt.Fprintf(mcpView, "You: %s\n", inputText)
+		mcpInput.SetText("")
+		traceID := fmt.Sprintf("%d", time.Now().UnixNano())
+		// choose MCP server URL if provided, else use Agent backend
+		var mcpClient *mcp.Client
+		if serverURL != "" {
+			mcpClient = mcp.NewClient(serverURL, cfg.AuthToken)
+		} else {
+			mcpClient = mcp.NewClient(cfg.AgentURL, cfg.AuthToken)
+		}
+		result, err := mcpClient.CallTool(context.Background(), inputText, traceID)
 		if err != nil {
-			return
+			fmt.Fprintf(mcpView, "Error: %v\n", err)
+		} else {
+			fmt.Fprintf(mcpView, "Result: %s\n", result)
 		}
-		for _, entry := range entries {
-			fullPath := filepath.Join(path, entry.Name())
-			child := tview.NewTreeNode(entry.Name()).
-				SetReference(fullPath).
-				SetSelectable(true)
-			if entry.IsDir() {
-				child.SetColor(tcell.ColorGreen)
-				child.SetExpanded(false)
-				addNodes(child, fullPath)
-			}
-			node.AddChild(child)
-		}
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		cwd = "."
-	}
-	rootNode := tview.NewTreeNode(cwd).
-		SetReference(cwd).
-		SetColor(tcell.ColorGreen).
-		SetExpanded(true)
-	addNodes(rootNode, cwd)
-	fileBrowser.SetRoot(rootNode).SetCurrentNode(rootNode)
-
-	postmanContent := tview.NewTextView()
-	postmanContent.SetBorder(true)
-	postmanContent.SetTitle("Collection")
-	if uiCollectionPath != "" {
-		postmanContent.Write([]byte(fmt.Sprintf("Loaded collection: %s\n", uiCollectionPath)))
-	} else {
-		postmanContent.Write([]byte("No collection loaded\n"))
-	}
-
-	fileBrowser.SetSelectedFunc(func(node *tview.TreeNode) {
-		ref := node.GetReference().(string)
-		info, err := os.Stat(ref)
-		if err != nil {
-			return
-		}
-		if info.IsDir() {
-			node.SetExpanded(!node.IsExpanded())
-			return
-		}
-		if strings.HasSuffix(strings.ToLower(ref), ".json") {
-			uiCollectionPath = ref
-			postmanContent.Clear()
-			fmt.Fprintf(postmanContent, "Loaded collection: %s\n", uiCollectionPath)
-		}
+		mcpView.ScrollToEnd()
 	})
-
-	postmanFlex := tview.NewFlex().SetDirection(tview.FlexColumn).
-		AddItem(fileBrowser, 0, 1, true).
-		AddItem(postmanContent, 0, 2, false)
+	// Tools dropdown for selecting available MCP tools
+	toolDropdown := tview.NewDropDown().
+		SetLabel("Tool: ").
+		SetOptions(cfg.Tools, func(text string, index int) {
+			mcpInput.SetText(text + " ")
+			app.SetFocus(mcpInput)
+		}).
+		SetCurrentOption(0)
+	toolDropdown.SetBorder(true).
+		SetTitle("Tools (Esc to cancel)").SetTitleAlign(tview.AlignLeft)
+	toolDropdown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEsc || event.Key() == tcell.KeyTab {
+			app.SetFocus(mcpInput)
+			return nil
+		}
+		return event
+	})
+   // Layout for MCP view: results, tools dropdown, and input
+   mcpFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+       AddItem(mcpView, 0, 1, false).
+       AddItem(toolDropdown, 3, 0, false).
+       AddItem(mcpInput, 1, 0, true)
+   
+   // File Explorer: browse and view files via MCP backend
+   explorerTree = tview.NewTreeView()
+   explorerTree.SetBorder(true).SetTitle("Explorer")
+   // Recursively add directory nodes
+   var addExplorerNodes func(node *tview.TreeNode, path string)
+   addExplorerNodes = func(node *tview.TreeNode, path string) {
+       entries, err := os.ReadDir(path)
+       if err != nil {
+           return
+       }
+       for _, entry := range entries {
+           fullPath := filepath.Join(path, entry.Name())
+           child := tview.NewTreeNode(entry.Name()).
+               SetReference(fullPath).
+               SetSelectable(true)
+           if entry.IsDir() {
+               child.SetColor(tcell.ColorGreen).SetExpanded(false)
+               addExplorerNodes(child, fullPath)
+           }
+           node.AddChild(child)
+       }
+   }
+   // Determine explorer root
+   explorerRoot := uiExplorerRoot
+   if explorerRoot == "" {
+       cwd, err := os.Getwd()
+       if err != nil {
+           explorerRoot = "."
+       } else {
+           explorerRoot = cwd
+       }
+   }
+   rootNode := tview.NewTreeNode(explorerRoot).
+       SetReference(explorerRoot).
+       SetColor(tcell.ColorGreen).
+       SetExpanded(true)
+   addExplorerNodes(rootNode, explorerRoot)
+   explorerTree.SetRoot(rootNode).SetCurrentNode(rootNode)
+   // File content view
+   fileContentView = tview.NewTextView().SetScrollable(true)
+   fileContentView.SetBorder(true).SetTitle("File Content")
+   // On node selection: only toggle directories
+   explorerTree.SetSelectedFunc(func(node *tview.TreeNode) {
+       ref := node.GetReference().(string)
+       info, err := os.Stat(ref)
+       if err != nil {
+           return
+       }
+       if info.IsDir() {
+           node.SetExpanded(!node.IsExpanded())
+       }
+   })
+   // Capture keys for viewing or invoking MCP on files
+   explorerTree.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+       node := explorerTree.GetCurrentNode()
+       ref := node.GetReference().(string)
+       info, err := os.Stat(ref)
+       if err != nil {
+           return event
+       }
+       // Enter to explore: toggle directories or load file locally
+       if event.Key() == tcell.KeyEnter {
+           if info.IsDir() {
+               node.SetExpanded(!node.IsExpanded())
+           } else {
+               data, err := os.ReadFile(ref)
+               fileContentView.Clear()
+               if err != nil {
+                   fmt.Fprintf(fileContentView, "Error reading file: %v\n", err)
+               } else {
+                   fmt.Fprintf(fileContentView, "%s", data)
+               }
+           }
+           return nil
+       }
+       // 'm' key to switch to MCP mode for file
+       if event.Key() == tcell.KeyRune && (event.Rune() == 'm' || event.Rune() == 'M') {
+           if !info.IsDir() {
+               // Compute relative path and prefill MCP input
+               rel, err := filepath.Rel(explorerRoot, ref)
+               if err != nil {
+                   rel = ref
+               }
+               mcpInput.SetText(rel)
+               currentPage = "mcp"
+               pages.SwitchToPage("mcp")
+               app.SetFocus(mcpInput)
+           }
+           return nil
+       }
+       return event
+   })
+   // Layout explorer flex
+   explorerFlex = tview.NewFlex().SetDirection(tview.FlexColumn).
+       AddItem(explorerTree, 0, 1, true).
+       AddItem(fileContentView, 0, 2, false)
 
 	menuTitle := tview.NewTextView()
 	menuTitle.SetDynamicColors(true)
@@ -400,21 +499,80 @@ func runUI() error {
 	homeHint.SetDynamicColors(true)
 	homeHint.SetText("[::b]Home[::-] (F1)")
 	homeHint.SetTextAlign(tview.AlignCenter)
-	isAuthenticated := cfg.AuthToken != ""
-	modeBar := tview.NewFlex().SetDirection(tview.FlexColumn)
-	currentPage := "home"
+   // Explorer hint for ModeBar
+   explorerHint = tview.NewTextView()
+   explorerHint.SetDynamicColors(true)
+   explorerHint.SetText("[::b]Explorer[::-] (F3)")
+   explorerHint.SetTextAlign(tview.AlignCenter)
+   isAuthenticated := cfg.AuthToken != ""
+   modeBar := tview.NewFlex().SetDirection(tview.FlexColumn)
+   currentPage = "home"
 	var updateModeBar func()
 	updateModeBar = func() {
 		modeBar.Clear().
 			AddItem(homeHint, 0, 1, false)
 		if isAuthenticated {
 			modeBar.AddItem(menuTitle, 0, 1, false)
+			modeBar.AddItem(explorerHint, 0, 1, false)
 		}
 	}
-	updateModeBar()
+   updateModeBar()
+  // Settings menu list and Tenants subpage
+  settingsList := tview.NewList()
+  tenantsList := tview.NewList()
+  // Helper to load tenants
+  loadTenants := func() {
+      tenantsList.Clear()
+      req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, cfg.AgentURL+"/user/tenants", nil)
+      if err != nil {
+          tenantsList.AddItem("Error: invalid request", "", 0, nil)
+      } else {
+          req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+          resp, err := http.DefaultClient.Do(req)
+          if err != nil {
+              tenantsList.AddItem("Error: fetch failed", "", 0, nil)
+          } else {
+              defer resp.Body.Close()
+              if resp.StatusCode != http.StatusOK {
+                  tenantsList.AddItem(fmt.Sprintf("Error: status %d", resp.StatusCode), "", 0, nil)
+              } else {
+                  var list []struct{ID, Name string}
+                  if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+                      tenantsList.AddItem("Error: decode failed", "", 0, nil)
+                  } else {
+                      for _, t := range list {
+                          tenantsList.AddItem(fmt.Sprintf("%s (%s)", t.Name, t.ID), "", 0, nil)
+                      }
+                  }
+              }
+          }
+      }
+      tenantsList.AddItem("Back", "Return to Settings", 'B', func() {
+          currentPage = "settings"
+          pages.SwitchToPage("settings")
+          app.SetFocus(settingsList)
+          updateModeBar()
+      })
+  }
+  settingsList.
+      AddItem("View Tenants", "List all tenants", 'T', func() {
+          loadTenants()
+          currentPage = "settingsTenants"
+          pages.SwitchToPage("settingsTenants")
+          app.SetFocus(tenantsList)
+          updateModeBar()
+      }).
+      AddItem("Back", "Return to Home", 'B', func() {
+          currentPage = "home"
+          pages.SwitchToPage("home")
+          app.SetFocus(homeList)
+          updateModeBar()
+      })
+  settingsList.SetBorder(true).SetTitle("Settings").SetTitleAlign(tview.AlignCenter)
+  tenantsList.SetBorder(true).SetTitle("Tenants").SetTitleAlign(tview.AlignLeft)
 
-	// Dropdown menu for page navigation
-	menuList := tview.NewList().
+   // Dropdown menu for page navigation
+   menuList := tview.NewList().
 		AddItem("Chat", "Start interactive chat", 'C', func() {
 			currentPage = "chat"
 			pages.SwitchToPage("chat")
@@ -422,29 +580,45 @@ func runUI() error {
 			updateModeBar()
 			pages.RemovePage("menu")
 		}).
-		AddItem("Postman", "Load Postman collection", 'P', func() {
-			currentPage = "postman"
-			pages.SwitchToPage("postman")
-			app.SetFocus(fileBrowser)
-			updateModeBar()
-			pages.RemovePage("menu")
-		}).
-		AddItem("Agent", "Start agent interactive chat", 'A', func() {
-			currentPage = "agent"
-			pages.SwitchToPage("agent")
-			app.SetFocus(agentInput)
-			updateModeBar()
-			pages.RemovePage("menu")
-		}).
-		AddItem("Cancel", "", 0, func() {
+       // Explorer
+       AddItem("Explorer", "Browse files", 'E', func() {
+           currentPage = "explorer"
+           pages.SwitchToPage("explorer")
+           app.SetFocus(explorerTree)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("Agent", "Start agent interactive chat", 'A', func() {
+           currentPage = "agent"
+           pages.SwitchToPage("agent")
+           app.SetFocus(agentInput)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("MCP", "Invoke JSON-RPC tool", 'M', func() {
+           currentPage = "mcp"
+           pages.SwitchToPage("mcp")
+           app.SetFocus(mcpInput)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("Settings", "Admin settings", 'S', func() {
+           pages.SwitchToPage("settings")
+           app.SetFocus(settingsList)
+           updateModeBar()
+           pages.RemovePage("menu")
+       }).
+       AddItem("Cancel", "", 0, func() {
 			pages.RemovePage("menu")
 			switch currentPage {
 			case "chat":
 				app.SetFocus(input)
-			case "postman":
-				app.SetFocus(fileBrowser)
-			case "agent":
-				app.SetFocus(agentInput)
+       case "explorer":
+           app.SetFocus(explorerTree)
+       		case "agent":
+       			app.SetFocus(agentInput)
+       		case "mcp":
+       			app.SetFocus(mcpInput)
 			default:
 				app.SetFocus(homeList)
 			}
@@ -467,10 +641,12 @@ func runUI() error {
 			switch currentPage {
 			case "chat":
 				app.SetFocus(input)
-			case "postman":
-				app.SetFocus(fileBrowser)
+			case "explorer":
+				app.SetFocus(explorerTree)
 			case "agent":
 				app.SetFocus(agentInput)
+			case "mcp":
+				app.SetFocus(mcpInput)
 			default:
 				app.SetFocus(homeList)
 			}
@@ -621,10 +797,10 @@ func runUI() error {
 				app.SetFocus(agentInput)
 				updateModeBar()
 			})
-			homeList.AddItem("Postman", "Load Postman collection", 'P', func() {
-				currentPage = "postman"
-				pages.SwitchToPage("postman")
-				app.SetFocus(fileBrowser)
+				homeList.AddItem("Explorer", "Browse files", 'E', func() {
+				currentPage = "explorer"
+				pages.SwitchToPage("explorer")
+				app.SetFocus(explorerTree)
 				updateModeBar()
 			})
 			homeList.AddItem("Logout", "Logout current session", 'O', func() {
@@ -668,7 +844,10 @@ func runUI() error {
 		AddPage("register", registerForm, true, false).
 		AddPage("chat", chatFlex, true, false).
 		AddPage("agent", agentFlex, true, false).
-		AddPage("postman", postmanFlex, true, false)
+		AddPage("mcp", mcpFlex, true, false).
+		AddPage("settings", settingsList, true, false).
+		AddPage("settingsTenants", tenantsList, true, false).
+		AddPage("explorer", explorerFlex, true, false)
 
 	// Initial authentication: require login on startup
 	if !isAuthenticated {
@@ -706,8 +885,16 @@ func runUI() error {
 				app.SetFocus(menuList)
 			}
 			return nil
-		case tcell.KeyCtrlS:
-			return nil
+       case tcell.KeyF3:
+           if isAuthenticated {
+               currentPage = "explorer"
+               pages.SwitchToPage("explorer")
+               app.SetFocus(explorerTree)
+               updateModeBar()
+           }
+           return nil
+       case tcell.KeyCtrlS:
+           return nil
 		}
 		return event
 	})

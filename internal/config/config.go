@@ -22,8 +22,10 @@ type Config struct {
 	Provider string
 	// LogLevel sets the logging level (debug, info, warn, error)
 	LogLevel string
-	// Templates defines a list of prompt templates for the UI dropdown.
-	Templates []string
+   // Templates defines a list of prompt templates for the UI dropdown.
+   Templates []string
+   // Tools defines a list of available tools for the MCP JSON-RPC proxy.
+   Tools []string
 	// AgentURL is the Vibes Agent backend URL for agent chat and auth
 	AgentURL string
 	// AuthToken is the JWT access token obtained after login
@@ -77,7 +79,9 @@ func LoadConfig(cfgFile string) (*Config, error) {
 	v.SetDefault("provider", "openai")
 	v.SetDefault("log_level", "info")
 	v.SetDefault("agent_url", "http://localhost:8000")
-	v.SetDefault("auth_token", "")
+   v.SetDefault("auth_token", "")
+  // Default tools list for MCP mode
+  v.SetDefault("tools", []string{"calculator", "search_web", "weather", "translate", "filesystem"})
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -108,16 +112,17 @@ func LoadConfig(cfgFile string) (*Config, error) {
 		configFileUsed = cfgFile
 	}
 
-	cfg := &Config{
-		APIKey:     ack,
-		BaseURL:    burl,
-		Provider:   v.GetString("provider"),
-		LogLevel:   v.GetString("log_level"),
-		Templates:  v.GetStringSlice("templates"),
-		AgentURL:   agentURL,
-		AuthToken:  authToken,
-		v:          v,
-		configFile: configFileUsed,
-	}
+   cfg := &Config{
+       APIKey:     ack,
+       BaseURL:    burl,
+       Provider:   v.GetString("provider"),
+       LogLevel:   v.GetString("log_level"),
+       Templates:  v.GetStringSlice("templates"),
+       Tools:      v.GetStringSlice("tools"),
+       AgentURL:   agentURL,
+       AuthToken:  authToken,
+       v:          v,
+       configFile: configFileUsed,
+   }
 	return cfg, nil
 }
