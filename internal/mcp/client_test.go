@@ -29,7 +29,8 @@ func TestCallTool_Success(t *testing.T) {
        respObj := RPCResponse{
            JSONRPC: "2.0",
            ID:      reqObj.ID,
-           Result:  "output-data",
+           // Result must be a raw JSON string literal
+           Result:  json.RawMessage(`"output-data"`),
        }
        w.Header().Set("Content-Type", "application/json")
        json.NewEncoder(w).Encode(respObj)
