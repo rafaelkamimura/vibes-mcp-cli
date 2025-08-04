@@ -91,8 +91,17 @@ func (c *httpClient) Log(ctx context.Context, entry LogEntry) error {
 	if entry.SessionID == "" {
 		entry.SessionID = c.config.SessionID
 	}
-	if entry.UserID == "" && c.config.UserID != "" {
-		entry.UserID = c.config.UserID
+	
+	// Add user info to metadata instead of deprecated UserID field
+	if c.config.UserID != "" {
+		if entry.Metadata == nil {
+			entry.Metadata = make(map[string]interface{})
+		}
+		// Only add if not already set
+		if _, exists := entry.Metadata["user_id"]; !exists {
+			entry.Metadata["user_id"] = c.config.UserID
+		}
+		entry.UserID = c.config.UserID // Keep for internal use (not serialized)
 	}
 	
 	// Generate ID if not provided
@@ -145,9 +154,19 @@ func (c *httpClient) LogBatch(ctx context.Context, entries []LogEntry) error {
 		if entries[i].SessionID == "" {
 			entries[i].SessionID = c.config.SessionID
 		}
-		if entries[i].UserID == "" && c.config.UserID != "" {
-			entries[i].UserID = c.config.UserID
+		
+		// Add user info to metadata instead of deprecated UserID field
+		if c.config.UserID != "" {
+			if entries[i].Metadata == nil {
+				entries[i].Metadata = make(map[string]interface{})
+			}
+			// Only add if not already set
+			if _, exists := entries[i].Metadata["user_id"]; !exists {
+				entries[i].Metadata["user_id"] = c.config.UserID
+			}
+			entries[i].UserID = c.config.UserID // Keep for internal use (not serialized)
 		}
+		
 		if entries[i].ID == "" {
 			entries[i].ID = c.generateID()
 		}

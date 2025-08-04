@@ -208,12 +208,22 @@ func (e *Executor) ExecuteAsync(ctx context.Context, opts *CommandOptions) (*Pro
 			}
 		}()
 
-		// Wait for process to complete
-		_, err := process.Wait()
+		// Wait for process to complete with context timeout
+		ctx, cancel := context.WithTimeout(context.Background(), mergedOpts.Timeout)
+		defer cancel()
+		
+		_, err := process.WaitWithContext(ctx)
 		if err != nil {
-			e.logger.Error("async process execution failed",
-				zap.String("process_id", process.ID),
-				zap.Error(err))
+			if err == context.DeadlineExceeded {
+				e.logger.Warn("async process execution timed out",
+					zap.String("process_id", process.ID))
+				// Force kill the process if it timed out
+				process.Kill()
+			} else {
+				e.logger.Error("async process execution failed",
+					zap.String("process_id", process.ID),
+					zap.Error(err))
+			}
 		}
 	}()
 

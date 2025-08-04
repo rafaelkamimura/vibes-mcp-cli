@@ -514,13 +514,24 @@ func (p *Process) Close() error {
 		}
 	}
 
-	// Close subscriber channels
+	// Close subscriber channels safely
 	p.mu.Lock()
-	for _, subscriber := range p.subscribers {
-		close(subscriber)
-	}
+	subscribers := p.subscribers
 	p.subscribers = nil
 	p.mu.Unlock()
+
+	// Close channels outside the mutex to prevent deadlock
+	for _, subscriber := range subscribers {
+		// Use non-blocking close with defer to prevent hanging
+		go func(ch chan []byte) {
+			defer func() {
+				if r := recover(); r != nil {
+					// Channel already closed, ignore
+				}
+			}()
+			close(ch)
+		}(subscriber)
+	}
 
 	return lastErr
 }

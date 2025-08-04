@@ -15,22 +15,27 @@ func LogUIError(client Client, component, message string, err error, metadata ma
 		return
 	}
 	
+	// Initialize metadata if nil
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+	
+	// Add component info to metadata instead of deprecated Component field
+	metadata["component"] = component
+	
 	entry := LogEntry{
 		Timestamp: time.Now().UTC(),
 		Level:     LogLevelError,
 		Message:   message,
-		Component: component, // Keep for backward compatibility
+		Component: component, // Keep for internal use (not serialized)
 		Metadata:  metadata,
 	}
 	
 	if err != nil {
 		entry.ErrorCode = "ui_error"
 		entry.StackTrace = err.Error() // Store error details in stack trace
-		if entry.Metadata == nil {
-			entry.Metadata = make(map[string]interface{})
-		}
 		entry.Metadata["error"] = err.Error()
-		entry.Metadata["component"] = component
+		entry.Metadata["error_type"] = "ui_error"
 	}
 	
 	go func() {
@@ -46,19 +51,24 @@ func LogSessionEvent(client Client, eventType, sessionID string, metadata map[st
 		return
 	}
 	
+	// Initialize metadata if nil
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+	
+	// Add component info to metadata instead of deprecated Component field
+	metadata["component"] = "session"
+	metadata["event_type"] = eventType
+	metadata["session_id"] = sessionID
+	
 	entry := LogEntry{
 		Timestamp: time.Now().UTC(),
 		Level:     LogLevelInfo,
 		Message:   "Session event: " + eventType,
-		Component: "session",
+		Component: "session", // Keep for internal use (not serialized)
+		SessionID: sessionID, // Use dedicated session_id field
 		Metadata:  metadata,
 	}
-	
-	if entry.Metadata == nil {
-		entry.Metadata = make(map[string]interface{})
-	}
-	entry.Metadata["event_type"] = eventType
-	entry.Metadata["session_id"] = sessionID
 	
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -82,9 +92,10 @@ func LogAPICall(client Client, provider, endpoint string, duration time.Duration
 		Timestamp: time.Now().UTC(),
 		Level:     level,
 		Message:   fmt.Sprintf("API call to %s %s", provider, endpoint),
-		Component: "api_client", // Keep for backward compatibility
+		Component: "api_client", // Keep for internal use (not serialized)
 		Endpoint:  endpoint,     // Use dedicated endpoint field
 		Metadata: map[string]interface{}{
+			"component":    "api_client", // Move component to metadata
 			"provider":     provider,
 			"endpoint":     endpoint,
 			"duration_ms":  duration.Milliseconds(),
@@ -96,6 +107,7 @@ func LogAPICall(client Client, provider, endpoint string, duration time.Duration
 		entry.ErrorCode = "api_error"
 		entry.StackTrace = errorMsg
 		entry.Metadata["error"] = errorMsg
+		entry.Metadata["error_type"] = "api_error"
 	}
 	
 	go func() {
@@ -111,18 +123,22 @@ func LogUserAction(client Client, action string, metadata map[string]interface{}
 		return
 	}
 	
+	// Initialize metadata if nil
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+	
+	// Add component info to metadata instead of deprecated Component field
+	metadata["component"] = "ui"
+	metadata["action"] = action
+	
 	entry := LogEntry{
 		Timestamp: time.Now().UTC(),
 		Level:     LogLevelInfo,
 		Message:   "User action: " + action,
-		Component: "ui",
+		Component: "ui", // Keep for internal use (not serialized)
 		Metadata:  metadata,
 	}
-	
-	if entry.Metadata == nil {
-		entry.Metadata = make(map[string]interface{})
-	}
-	entry.Metadata["action"] = action
 	
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

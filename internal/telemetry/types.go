@@ -32,10 +32,11 @@ type LogEntry struct {
 	IPAddress     string                 `json:"ip_address,omitempty"`
 	Timestamp     time.Time              `json:"timestamp"`
 	
-	// Deprecated fields kept for backward compatibility
-	Component string `json:"component,omitempty"`
-	UserID    string `json:"user_id,omitempty"`
-	Error     *ErrorContext `json:"error,omitempty"`
+	// DEPRECATED: Fields below are kept for internal use only and not serialized to JSON
+	// They should be moved to Metadata field for backend compatibility
+	Component string `json:"-"` // No longer sent to backend, use metadata instead
+	UserID    string `json:"-"` // No longer sent to backend, use metadata instead
+	Error     *ErrorContext `json:"-"` // No longer sent to backend, use error_code/stack_trace instead
 }
 
 // ErrorContext contains additional error information

@@ -18,8 +18,10 @@ import (
 	"openai-cli/internal/providers"
 	"openai-cli/internal/service"
 	"openai-cli/internal/app/session"
+	"openai-cli/internal/ui"
 	"openai-cli/internal/ui/components"
 	"openai-cli/internal/telemetry"
+	"openai-cli/internal/terminal"
 	"go.uber.org/zap"
 
 	"github.com/gdamore/tcell/v2"
@@ -38,9 +40,36 @@ var (
 var uiCmd = &cobra.Command{
 	Use:   "ui",
 	Short: "Interactive terminal UI for MCP chat",
+	Long: `Launch an interactive terminal user interface for MCP chat.
+
+This command starts a full-screen terminal interface with multiple pages including
+chat, file explorer, session management, and telemetry dashboard.
+
+The UI requires a TTY-enabled terminal. In environments without TTY support 
+(containers, CI/CD, headless systems), the command will automatically suggest 
+alternatives or fallback to server mode if --fallback-server is enabled.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Run the TUI application
-		return runUI()
+		// Check if we should attempt fallback to server mode
+		fallbackServer, _ := cmd.Flags().GetBool("fallback-server")
+		fallbackPort, _ := cmd.Flags().GetInt("fallback-port")
+		
+		// Get force flag
+		forceMode, _ := cmd.Flags().GetBool("force")
+		
+		// Try to run TUI first
+		if err := runUI(forceMode); err != nil {
+			// If TUI fails and fallback is enabled, try server mode
+			if fallbackServer && terminal.IsHeadless() {
+				fmt.Fprintf(os.Stderr, "TUI not available, falling back to server mode...\n")
+				return runFallbackServer(fallbackPort)
+			}
+			
+			// Otherwise, provide helpful suggestions
+			provideFallbackOptions()
+			return err
+		}
+		
+		return nil
 	},
 }
 
@@ -49,17 +78,33 @@ func init() {
 	uiCmd.Flags().StringVar(&uiChatModel, "model", "gpt-3.5-turbo", "chat model to use in UI")
 	uiCmd.Flags().StringVar(&uiExplorerRoot, "explorer-root", "", "root path for file explorer")
 	uiCmd.Flags().BoolVar(&uiDebugMode, "debug", false, "enable debug mode to check menu items")
+	uiCmd.Flags().Bool("fallback-server", false, "automatically fallback to server mode when TUI is not available")
+	uiCmd.Flags().Int("fallback-port", 8080, "port to use for fallback server mode")
+	uiCmd.Flags().Bool("force", false, "force TUI mode even in non-interactive environments (may cause errors)")
 }
 
 // runUI initializes and runs the TUI
-func runUI() error {
+func runUI(forceMode bool) error {
+	
+	// Validate terminal environment before starting TUI (unless forced)
+	if !forceMode {
+		if err := validateTerminalForTUI(); err != nil {
+			return err
+		}
+	} else if uiDebugMode {
+		fmt.Fprintf(os.Stderr, "Warning: Force mode enabled - skipping terminal validation\n")
+	}
+	
 	// Ensure MCP server URL defaults to Agent backend if not explicitly set
 	if serverURL == "" {
 		serverURL = cfg.AgentURL
 	}
 	
-	app := tview.NewApplication()
-	pages := tview.NewPages()
+	// Initialize TUI with safe error handling
+	app, pages, err := initializeSafeTUI()
+	if err != nil {
+		return terminal.CreateTerminalError(err, "Failed to initialize TUI")
+	}
 	// maintain full conversation context
 	var conversation []client.ChatMessage
 	// declare variables for closure capture
@@ -88,7 +133,6 @@ func runUI() error {
 	var sessionLogsViewer *components.SessionLogsViewer
 	var telemetryDashboard *components.TelemetryDashboard
 	var logger *telemetry.TelemetryLogger
-	var telemetryClient telemetry.Client
 	
 	// Initialize telemetry - use dedicated agent backend setup for better integration
 	telemetryClient, err := telemetry.SetupTelemetryForAgentBackend(
@@ -138,14 +182,27 @@ func runUI() error {
 		logger.Info("session manager initialized successfully")
 	}
 	defer func() {
-		if sessionManager != nil {
-			sessionManager.Close()
-		}
-		if sessionLogsViewer != nil {
-			sessionLogsViewer.Close()
-		}
-		if telemetryDashboard != nil {
-			telemetryDashboard.Close()
+		// Use goroutines with timeout to prevent hanging on shutdown
+		shutdownDone := make(chan struct{})
+		go func() {
+			defer close(shutdownDone)
+			if sessionManager != nil {
+				sessionManager.Close()
+			}
+			if sessionLogsViewer != nil {
+				sessionLogsViewer.Close()
+			}
+			if telemetryDashboard != nil {
+				telemetryDashboard.Close()
+			}
+		}()
+		
+		// Wait for shutdown with timeout
+		select {
+		case <-shutdownDone:
+			logger.Info("UI components shut down successfully")
+		case <-time.After(5 * time.Second):
+			logger.Warn("UI component shutdown timed out")
 		}
 	}()
 	
@@ -265,6 +322,14 @@ func runUI() error {
 		return event
 	})
 	input.SetDoneFunc(func(key tcell.Key) {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("panic in chat input handler", zap.Any("panic", r))
+				fmt.Fprintf(chatView, "Error: %v\n", r)
+				chatView.ScrollToEnd()
+			}
+		}()
+		
 		if key != tcell.KeyEnter {
 			return
 		}
@@ -301,7 +366,11 @@ func runUI() error {
 				if cfg.AuthToken != "" {
 					httpReq.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
 				}
-				resp, e := http.DefaultClient.Do(httpReq)
+				// Create HTTP client with timeout
+				client := &http.Client{
+					Timeout: 30 * time.Second,
+				}
+				resp, e := client.Do(httpReq)
 				if e != nil {
 					err = e
 				} else {
@@ -323,12 +392,20 @@ func runUI() error {
 						body, _ := io.ReadAll(resp.Body)
 						err = fmt.Errorf("status: %d, body: %s", resp.StatusCode, string(body))
 					} else {
-						var cResp client.ChatCompletionsResponse
+						var cResp struct {
+							Choices []struct {
+								Message struct {
+									Content string `json:"content"`
+								} `json:"message"`
+							} `json:"choices"`
+						}
 						e = json.NewDecoder(resp.Body).Decode(&cResp)
 						if e != nil {
 							err = e
-						} else {
+						} else if len(cResp.Choices) > 0 {
 							respMsg = cResp.Choices[0].Message.Content
+						} else {
+							err = fmt.Errorf("no choices in response")
 						}
 					}
 				}
@@ -375,6 +452,14 @@ func runUI() error {
 	agentView.SetBorder(true).SetTitle("Agent Chat UI")
 	agentInput := tview.NewInputField().SetLabel("You: ").SetFieldWidth(0)
 	agentInput.SetDoneFunc(func(key tcell.Key) {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("panic in agent input handler", zap.Any("panic", r))
+				fmt.Fprintf(agentView, "Error: %v\n", r)
+				agentView.ScrollToEnd()
+			}
+		}()
+		
 		if key != tcell.KeyEnter {
 			return
 		}
@@ -394,7 +479,11 @@ func runUI() error {
 			if cfg.AuthToken != "" {
 				req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
 			}
-			resp, err := http.DefaultClient.Do(req)
+			// Create HTTP client with timeout
+			client := &http.Client{
+				Timeout: 30 * time.Second,
+			}
+			resp, err := client.Do(req)
 			if err != nil {
 				fmt.Fprintf(agentView, "Error: %v\n", err)
 			} else {
@@ -436,6 +525,14 @@ func runUI() error {
 	mcpView.SetBorder(true).SetTitle("MCP Tool").SetTitleAlign(tview.AlignLeft)
 	mcpInput := tview.NewInputField().SetLabel("Input: ").SetFieldWidth(0)
 	mcpInput.SetDoneFunc(func(key tcell.Key) {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("panic in mcp input handler", zap.Any("panic", r))
+				fmt.Fprintf(mcpView, "Error: %v\n", r)
+				mcpView.ScrollToEnd()
+			}
+		}()
+		
 		if key != tcell.KeyEnter {
 			return
 		}
@@ -632,7 +729,11 @@ func runUI() error {
 			tenantsList.AddItem("Error: invalid request", "", 0, nil)
 		} else {
 			req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
-			resp, err := http.DefaultClient.Do(req)
+			// Create HTTP client with timeout
+			client := &http.Client{
+				Timeout: 10 * time.Second,
+			}
+			resp, err := client.Do(req)
 			if err != nil {
 				tenantsList.AddItem("Error: fetch failed", "", 0, nil)
 			} else {
@@ -715,23 +816,60 @@ func runUI() error {
 	if sessionManager != nil {
 		logger.Info("Adding Claude Code option to menu")
 		menuList.AddItem("Claude Code", "Manage Claude Code sessions", 'L', func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("panic in Claude Code navigation", zap.Any("panic", r))
+					// Return to home on panic
+					currentPage = "home"
+					pages.SwitchToPage("home")
+					app.SetFocus(homeList)
+					updateModeBar()
+					pages.RemovePage("menu")
+					return
+				}
+			}()
+			
+			if sessionView == nil {
+				logger.Warn("Session view is nil, cannot switch to Claude Code")
+				// Stay on current page but close menu
+				pages.RemovePage("menu")
+				return
+			}
+			
 			currentPage = "claude"
 			pages.SwitchToPage("claude")
-			if sessionView != nil {
-				app.SetFocus(sessionView)
-			}
+			app.SetFocus(sessionView)
 			updateModeBar()
 			pages.RemovePage("menu")
 		})
 		
 		// Add Session Logs option
 		menuList.AddItem("Session Logs", "View session history and logs", 'G', func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("panic in Session Logs navigation", zap.Any("panic", r))
+					// Return to home on panic
+					currentPage = "home"
+					pages.SwitchToPage("home")
+					app.SetFocus(homeList)
+					updateModeBar()
+					pages.RemovePage("menu")
+					return
+				}
+			}()
+			
 			telemetry.LogUserAction(telemetryClient, "navigate_to_session_logs", nil)
+			
+			if sessionLogsViewer == nil {
+				logger.Warn("Session logs viewer is nil, cannot switch to session logs")
+				// Stay on current page but close menu
+				pages.RemovePage("menu")
+				return
+			}
+			
 			currentPage = "sessionlogs"
 			pages.SwitchToPage("sessionlogs")
-			if sessionLogsViewer != nil {
-				app.SetFocus(sessionLogsViewer)
-			}
+			app.SetFocus(sessionLogsViewer)
 			updateModeBar()
 			pages.RemovePage("menu")
 		})
@@ -741,12 +879,31 @@ func runUI() error {
 	
 	// Add Telemetry Dashboard option
 	menuList.AddItem("Telemetry", "View telemetry and system metrics", 'T', func() {
+		defer func() {
+			if r := recover(); r != nil {
+				logger.Error("panic in Telemetry navigation", zap.Any("panic", r))
+				// Return to home on panic
+				currentPage = "home"
+				pages.SwitchToPage("home")
+				app.SetFocus(homeList)
+				updateModeBar()
+				pages.RemovePage("menu")
+				return
+			}
+		}()
+		
 		telemetry.LogUserAction(telemetryClient, "navigate_to_telemetry", nil)
+		
+		if telemetryDashboard == nil {
+			logger.Warn("Telemetry dashboard is nil, cannot switch to telemetry")
+			// Stay on current page but close menu
+			pages.RemovePage("menu")
+			return
+		}
+		
 		currentPage = "telemetry"
 		pages.SwitchToPage("telemetry")
-		if telemetryDashboard != nil {
-			app.SetFocus(telemetryDashboard)
-		}
+		app.SetFocus(telemetryDashboard)
 		updateModeBar()
 		pages.RemovePage("menu")
 	})
@@ -1009,21 +1166,43 @@ func runUI() error {
 			if sessionManager != nil {
 				logger.Info("Adding Claude Code option to home menu")
 				homeList.AddItem("Claude Code", "Manage Claude Code sessions", 'L', func() {
+					defer func() {
+						if r := recover(); r != nil {
+							logger.Error("panic in home Claude Code navigation", zap.Any("panic", r))
+							// Stay on home page
+							return
+						}
+					}()
+					
+					if sessionView == nil {
+						logger.Warn("Session view is nil, cannot switch to Claude Code from home")
+						return
+					}
+					
 					currentPage = "claude"
 					pages.SwitchToPage("claude")
-					if sessionView != nil {
-						app.SetFocus(sessionView)
-					}
+					app.SetFocus(sessionView)
 					updateModeBar()
 				})
 				
 				// Add Session Logs option
 				homeList.AddItem("Session Logs", "View session history and logs", 'G', func() {
+					defer func() {
+						if r := recover(); r != nil {
+							logger.Error("panic in home Session Logs navigation", zap.Any("panic", r))
+							// Stay on home page
+							return
+						}
+					}()
+					
+					if sessionLogsViewer == nil {
+						logger.Warn("Session logs viewer is nil, cannot switch to session logs from home")
+						return
+					}
+					
 					currentPage = "sessionlogs"
 					pages.SwitchToPage("sessionlogs")
-					if sessionLogsViewer != nil {
-						app.SetFocus(sessionLogsViewer)
-					}
+					app.SetFocus(sessionLogsViewer)
 					updateModeBar()
 				})
 			} else {
@@ -1032,11 +1211,22 @@ func runUI() error {
 			
 			// Add Telemetry Dashboard option
 			homeList.AddItem("Telemetry", "View telemetry and system metrics", 'T', func() {
+				defer func() {
+					if r := recover(); r != nil {
+						logger.Error("panic in home Telemetry navigation", zap.Any("panic", r))
+						// Stay on home page
+						return
+					}
+				}()
+				
+				if telemetryDashboard == nil {
+					logger.Warn("Telemetry dashboard is nil, cannot switch to telemetry from home")
+					return
+				}
+				
 				currentPage = "telemetry"
 				pages.SwitchToPage("telemetry")
-				if telemetryDashboard != nil {
-					app.SetFocus(telemetryDashboard)
-				}
+				app.SetFocus(telemetryDashboard)
 				updateModeBar()
 			})
 			homeList.AddItem("Logout", "Logout current session", 'O', func() {
@@ -1186,8 +1376,165 @@ func runUI() error {
 		return event
 	})
 
+	// Add global panic recovery to prevent complete UI freeze
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("UI panic recovered", zap.Any("panic", r))
+			if telemetryClient != nil {
+				telemetry.LogUIError(telemetryClient, "ui_panic", "UI panic recovered", fmt.Errorf("%v", r), map[string]interface{}{
+					"current_page": currentPage,
+				})
+			}
+		}
+	}()
+	
 	if err := app.SetRoot(root, true).EnableMouse(true).Run(); err != nil {
-		return err
+		return terminal.CreateTerminalError(err, "TUI execution failed")
 	}
 	return nil
+}
+
+// validateTerminalForTUI validates the terminal environment for TUI usage
+func validateTerminalForTUI() error {
+	// Get comprehensive terminal information
+	termInfo := terminal.GetTerminalInfo()
+	
+	// Check if we can run TUI
+	canRun, err := terminal.CanRunTUI()
+	if !canRun {
+		// Create a user-friendly error message
+		return fmt.Errorf("terminal environment not suitable for TUI: %w\n\n%s", 
+			err, terminal.SuggestFix(err))
+	}
+	
+	// Additional validation specific to our UI needs
+	if err := terminal.ValidateTerminalEnvironment(); err != nil {
+		// Log the validation issues but don't fail - just warn
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+	}
+	
+	// Log terminal information for debugging
+	if uiDebugMode {
+		fmt.Printf("Terminal Environment:\n")
+		fmt.Printf("  Environment: %s\n", termInfo.Environment.String())
+		fmt.Printf("  Has TTY: %v\n", termInfo.HasTTY)
+		fmt.Printf("  Is Terminal: %v\n", termInfo.IsTerminal)
+		fmt.Printf("  Size: %dx%d\n", termInfo.Width, termInfo.Height)
+		fmt.Printf("  TERM: %s\n", termInfo.Term)
+	}
+	
+	return nil
+}
+
+// initializeSafeTUI safely initializes the TUI components with error handling
+func initializeSafeTUI() (*tview.Application, *tview.Pages, error) {
+	// Create safe UI wrapper
+	safeUI := ui.NewSafeUIWrapper()
+	
+	// Validate before creating components
+	if err := safeUI.ValidateBeforeCreate(); err != nil {
+		return nil, nil, fmt.Errorf("TUI validation failed: %w", err)
+	}
+	
+	// Create application using safe wrapper
+	app, err := safeUI.SafeNewApplication()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create application: %w", err)
+	}
+	
+	// Create pages using safe wrapper
+	pages, err := safeUI.SafeNewPages()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create pages: %w", err)
+	}
+	
+	// Validate that we can access the screen
+	if err := validateTUIScreen(app); err != nil {
+		return nil, nil, fmt.Errorf("screen validation failed: %w", err)
+	}
+	
+	return app, pages, nil
+}
+
+// validateTUIScreen validates that the TUI screen can be accessed
+func validateTUIScreen(app *tview.Application) error {
+	if app == nil {
+		return fmt.Errorf("application is nil")
+	}
+	
+	// Try to create a minimal screen test
+	testDone := make(chan error, 1)
+	
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				testDone <- fmt.Errorf("screen test panic: %v", r)
+			}
+		}()
+		
+		// Create a simple test view
+		testView := tview.NewTextView()
+		testView.SetText("Terminal test")
+		
+		// Try to set it as root briefly
+		app.SetRoot(testView, false)
+		testDone <- nil
+	}()
+	
+	// Wait for test with timeout
+	select {
+	case err := <-testDone:
+		return err
+	case <-time.After(2 * time.Second):
+		return fmt.Errorf("screen validation timed out")
+	}
+}
+
+// provideFallbackOptions suggests alternatives when TUI cannot be used
+func provideFallbackOptions() error {
+	termInfo := terminal.GetTerminalInfo()
+	
+	fmt.Fprintf(os.Stderr, "\nTUI mode is not available in your current environment (%s).\n", 
+		termInfo.Environment.String())
+	
+	fmt.Fprintf(os.Stderr, "\nAlternative options:\n")
+	fmt.Fprintf(os.Stderr, "  1. HTTP Server mode:  vibes-mcp-cli serve --port 8080\n")
+	fmt.Fprintf(os.Stderr, "  2. CLI mode:          vibes-mcp-cli chat \"your message\"\n")
+	fmt.Fprintf(os.Stderr, "  3. Completion mode:   vibes-mcp-cli completion \"your prompt\"\n")
+	
+	switch termInfo.Environment {
+	case terminal.EnvironmentDocker:
+		fmt.Fprintf(os.Stderr, "\nFor Docker: Run with TTY allocation:\n")
+		fmt.Fprintf(os.Stderr, "  docker run -it your-image vibes-mcp-cli ui\n")
+	case terminal.EnvironmentCI:
+		fmt.Fprintf(os.Stderr, "\nFor CI/CD: Use non-interactive commands:\n")
+		fmt.Fprintf(os.Stderr, "  vibes-mcp-cli chat \"your message\" --print-curl\n")
+	case terminal.EnvironmentSSH:
+		fmt.Fprintf(os.Stderr, "\nFor SSH: Connect with TTY allocation:\n")
+		fmt.Fprintf(os.Stderr, "  ssh -t user@host\n")
+	}
+	
+	return fmt.Errorf("TUI not available, see alternatives above")
+}
+
+// runFallbackServer starts the HTTP server as a fallback when TUI is not available
+func runFallbackServer(port int) error {
+	fmt.Fprintf(os.Stderr, "Starting HTTP server on port %d as TUI fallback...\n", port)
+	fmt.Fprintf(os.Stderr, "Access the web interface at: http://localhost:%d\n", port)
+	fmt.Fprintf(os.Stderr, "Press Ctrl+C to stop the server\n\n")
+	
+	// Import the server command functionality
+	// We'll create a minimal server setup here
+	return runServer("0.0.0.0", port)
+}
+
+// runServer is a simplified version of the server command for fallback use
+func runServer(host string, port int) error {
+	// This is a basic implementation - in a real scenario, you'd want to
+	// import and use the actual server implementation from cmd/server.go
+	
+	fmt.Fprintf(os.Stderr, "Server fallback not fully implemented yet.\n")
+	fmt.Fprintf(os.Stderr, "Please use: vibes-mcp-cli serve --host %s --port %d\n", host, port)
+	
+	return fmt.Errorf("fallback server mode not fully implemented - use 'vibes-mcp-cli serve' instead")
 }

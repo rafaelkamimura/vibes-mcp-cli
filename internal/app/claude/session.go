@@ -458,12 +458,50 @@ func (s *Session) Delete() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Terminate if not already terminated
+	// Terminate if not already terminated (do it without recursive locking)
 	if s.state != SessionStateTerminated {
-		s.Terminate()
+		s.terminateUnsafe()
 	}
 
 	// This would delete session files from storage
 	s.logger.Info("session deleted", zap.String("session_id", s.id))
 	return nil
+}
+
+// terminateUnsafe terminates the session without acquiring mutex (internal use only)
+func (s *Session) terminateUnsafe() {
+	if s.state == SessionStateTerminated {
+		return // Already terminated
+	}
+
+	// Kill any running process
+	if s.process != nil && s.process.IsRunning() {
+		s.logger.Info("terminating Claude CLI process",
+			zap.String("session_id", s.id),
+			zap.String("process_id", s.process.ID),
+			zap.Int("pid", s.process.GetPID()))
+
+		if err := s.process.Kill(); err != nil {
+			s.logger.Error("failed to kill Claude CLI process during termination",
+				zap.String("session_id", s.id),
+				zap.String("process_id", s.process.ID),
+				zap.Error(err))
+			s.stats.ErrorCount++
+		} else {
+			s.logger.Info("Claude CLI process terminated successfully",
+				zap.String("session_id", s.id),
+				zap.String("process_id", s.process.ID))
+		}
+	}
+
+	// Clean up process reference
+	if s.process != nil {
+		s.process.Close()
+		s.process = nil
+	}
+
+	s.state = SessionStateTerminated
+	s.updatedAt = time.Now()
+
+	s.logger.Info("session terminated", zap.String("session_id", s.id))
 }
