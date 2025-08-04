@@ -85,6 +85,8 @@ func runUI() error {
 	// session management components
 	var sessionManager *session.Manager
 	var sessionView tview.Primitive // Use interface type to support both session views
+	var sessionLogsViewer *components.SessionLogsViewer
+	var telemetryDashboard *components.TelemetryDashboard
 	var logger *telemetry.TelemetryLogger
 	var telemetryClient telemetry.Client
 	
@@ -138,6 +140,12 @@ func runUI() error {
 	defer func() {
 		if sessionManager != nil {
 			sessionManager.Close()
+		}
+		if sessionLogsViewer != nil {
+			sessionLogsViewer.Close()
+		}
+		if telemetryDashboard != nil {
+			telemetryDashboard.Close()
 		}
 	}()
 	
@@ -578,7 +586,14 @@ func runUI() error {
 		// Create a zap logger for session view
 		zapLogger, _ := zap.NewDevelopment()
 		sessionView = components.NewSimpleSessionView(sessionManager, zapLogger)
+		
+		// Create session logs viewer
+		sessionLogsViewer = components.NewSessionLogsViewer(sessionManager, telemetryClient, zapLogger)
 	}
+	
+	// Create telemetry dashboard with a separate zap logger
+	dashboardLogger, _ := zap.NewDevelopment()
+	telemetryDashboard = components.NewTelemetryDashboard(telemetryClient, dashboardLogger)
 
 	menuTitle := tview.NewTextView()
 	menuTitle.SetDynamicColors(true)
@@ -708,9 +723,33 @@ func runUI() error {
 			updateModeBar()
 			pages.RemovePage("menu")
 		})
+		
+		// Add Session Logs option
+		menuList.AddItem("Session Logs", "View session history and logs", 'G', func() {
+			telemetry.LogUserAction(telemetryClient, "navigate_to_session_logs", nil)
+			currentPage = "sessionlogs"
+			pages.SwitchToPage("sessionlogs")
+			if sessionLogsViewer != nil {
+				app.SetFocus(sessionLogsViewer)
+			}
+			updateModeBar()
+			pages.RemovePage("menu")
+		})
 	} else {
 		logger.Warn("Session manager is nil, not adding Claude Code option to menu")
 	}
+	
+	// Add Telemetry Dashboard option
+	menuList.AddItem("Telemetry", "View telemetry and system metrics", 'T', func() {
+		telemetry.LogUserAction(telemetryClient, "navigate_to_telemetry", nil)
+		currentPage = "telemetry"
+		pages.SwitchToPage("telemetry")
+		if telemetryDashboard != nil {
+			app.SetFocus(telemetryDashboard)
+		}
+		updateModeBar()
+		pages.RemovePage("menu")
+	})
 	
 	menuList.AddItem("Settings", "Admin settings", 'S', func() {
 		pages.SwitchToPage("settings")
@@ -732,6 +771,14 @@ func runUI() error {
 			case "claude":
 				if sessionView != nil {
 					app.SetFocus(sessionView)
+				}
+			case "sessionlogs":
+				if sessionLogsViewer != nil {
+					app.SetFocus(sessionLogsViewer)
+				}
+			case "telemetry":
+				if telemetryDashboard != nil {
+					app.SetFocus(telemetryDashboard)
 				}
 			default:
 				app.SetFocus(homeList)
@@ -764,6 +811,14 @@ func runUI() error {
 			case "claude":
 				if sessionView != nil {
 					app.SetFocus(sessionView)
+				}
+			case "sessionlogs":
+				if sessionLogsViewer != nil {
+					app.SetFocus(sessionLogsViewer)
+				}
+			case "telemetry":
+				if telemetryDashboard != nil {
+					app.SetFocus(telemetryDashboard)
 				}
 			default:
 				app.SetFocus(homeList)
@@ -961,9 +1016,29 @@ func runUI() error {
 					}
 					updateModeBar()
 				})
+				
+				// Add Session Logs option
+				homeList.AddItem("Session Logs", "View session history and logs", 'G', func() {
+					currentPage = "sessionlogs"
+					pages.SwitchToPage("sessionlogs")
+					if sessionLogsViewer != nil {
+						app.SetFocus(sessionLogsViewer)
+					}
+					updateModeBar()
+				})
 			} else {
 				logger.Warn("Session manager is nil, not adding Claude Code option to home menu")
 			}
+			
+			// Add Telemetry Dashboard option
+			homeList.AddItem("Telemetry", "View telemetry and system metrics", 'T', func() {
+				currentPage = "telemetry"
+				pages.SwitchToPage("telemetry")
+				if telemetryDashboard != nil {
+					app.SetFocus(telemetryDashboard)
+				}
+				updateModeBar()
+			})
 			homeList.AddItem("Logout", "Logout current session", 'O', func() {
 				isAuthenticated = false
 				cfg.AuthToken = ""
@@ -1025,6 +1100,40 @@ func runUI() error {
 			return event
 		})
 		pages.AddPage("claude", sessionWrapper, true, false)
+	}
+	
+	// Add Session Logs page if session logs viewer is available
+	if sessionLogsViewer != nil {
+		// Wrap session logs viewer to handle 'q' key
+		sessionLogsWrapper := tview.NewFlex().AddItem(sessionLogsViewer, 0, 1, true)
+		sessionLogsWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Rune() == 'q' || event.Rune() == 'Q' {
+				currentPage = "home"
+				pages.SwitchToPage("home")
+				app.SetFocus(homeList)
+				updateModeBar()
+				return nil
+			}
+			return event
+		})
+		pages.AddPage("sessionlogs", sessionLogsWrapper, true, false)
+	}
+	
+	// Add Telemetry Dashboard page if telemetry dashboard is available
+	if telemetryDashboard != nil {
+		// Wrap telemetry dashboard to handle 'q' key
+		telemetryWrapper := tview.NewFlex().AddItem(telemetryDashboard, 0, 1, true)
+		telemetryWrapper.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Rune() == 'q' || event.Rune() == 'Q' {
+				currentPage = "home"
+				pages.SwitchToPage("home")
+				app.SetFocus(homeList)
+				updateModeBar()
+				return nil
+			}
+			return event
+		})
+		pages.AddPage("telemetry", telemetryWrapper, true, false)
 	}
 
 	// Initial authentication: require login on startup
