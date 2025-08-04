@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -36,15 +35,15 @@ func DefaultManagerConfig() *ManagerConfig {
 
 // Manager manages multiple Claude Code sessions
 type Manager struct {
-	config    *ManagerConfig
-	executor  *claude.Executor
-	registry  *Registry
-	logger    *zap.Logger
-	mu        sync.RWMutex
-	sessions  map[string]*claude.Session // Session ID -> Session
-	ctx       context.Context
-	cancel    context.CancelFunc
-	cleanup   *time.Ticker
+	config   *ManagerConfig
+	executor *claude.Executor
+	registry *Registry
+	logger   *zap.Logger
+	mu       sync.RWMutex
+	sessions map[string]*claude.Session // Session ID -> Session
+	ctx      context.Context
+	cancel   context.CancelFunc
+	cleanup  *time.Ticker
 }
 
 // NewManager creates a new session manager

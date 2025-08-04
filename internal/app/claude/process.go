@@ -49,24 +49,24 @@ func (ps ProcessState) String() string {
 
 // Process represents a managed Claude Code process with I/O handling
 type Process struct {
-	ID              string           // Unique process identifier
-	cmd             *exec.Cmd        // Underlying command
-	logger          *zap.Logger      // Logger instance
-	state           ProcessState     // Current process state  
-	mu              sync.RWMutex     // Protects concurrent access
-	stdin           io.WriteCloser   // Process stdin
-	stdout          io.ReadCloser    // Process stdout
-	stderr          io.ReadCloser    // Process stderr
-	outputBuffer    *bytes.Buffer    // Accumulated output buffer
-	outputChan      chan []byte      // Real-time output channel
-	subscribers     []chan []byte    // Output subscribers
-	resourceLimits  *ResourceLimits  // Resource constraints
-	startTime       time.Time        // Process start time
-	endTime         time.Time        // Process end time
-	exitCode        int              // Process exit code
-	err             error            // Process error
-	done            chan struct{}    // Completion signal
-	cancel          context.CancelFunc // Context cancellation
+	ID             string             // Unique process identifier
+	cmd            *exec.Cmd          // Underlying command
+	logger         *zap.Logger        // Logger instance
+	state          ProcessState       // Current process state
+	mu             sync.RWMutex       // Protects concurrent access
+	stdin          io.WriteCloser     // Process stdin
+	stdout         io.ReadCloser      // Process stdout
+	stderr         io.ReadCloser      // Process stderr
+	outputBuffer   *bytes.Buffer      // Accumulated output buffer
+	outputChan     chan []byte        // Real-time output channel
+	subscribers    []chan []byte      // Output subscribers
+	resourceLimits *ResourceLimits    // Resource constraints
+	startTime      time.Time          // Process start time
+	endTime        time.Time          // Process end time
+	exitCode       int                // Process exit code
+	err            error              // Process error
+	done           chan struct{}      // Completion signal
+	cancel         context.CancelFunc // Context cancellation
 }
 
 // NewProcess creates a new managed process
@@ -124,7 +124,7 @@ func (p *Process) Start() error {
 
 	// Set up pipes for I/O
 	var err error
-	
+
 	p.stdin, err = p.cmd.StdinPipe()
 	if err != nil {
 		p.setState(ProcessStateError)
@@ -205,7 +205,7 @@ func (p *Process) handleOutput() {
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
-		
+
 		// Make a copy since scanner.Bytes() returns a slice that may be overwritten
 		output := make([]byte, len(line)+1) // +1 for newline
 		copy(output, line)
@@ -495,19 +495,19 @@ func (p *Process) Close() error {
 
 	// Close I/O pipes
 	var lastErr error
-	
+
 	if p.stdin != nil {
 		if err := p.stdin.Close(); err != nil {
 			lastErr = err
 		}
 	}
-	
+
 	if p.stdout != nil {
 		if err := p.stdout.Close(); err != nil {
 			lastErr = err
 		}
 	}
-	
+
 	if p.stderr != nil {
 		if err := p.stderr.Close(); err != nil {
 			lastErr = err
