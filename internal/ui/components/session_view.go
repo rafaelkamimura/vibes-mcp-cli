@@ -16,21 +16,21 @@ import (
 // SessionView provides a TUI for managing Claude Code sessions
 type SessionView struct {
 	*tview.Flex
-	manager         *session.Manager
-	logger          *zap.Logger
-	
+	manager *session.Manager
+	logger  *zap.Logger
+
 	// UI components
-	sessionList     *tview.List
-	sessionDetails  *tview.TextView
-	outputView      *tview.TextView
-	inputField      *tview.InputField
-	statusBar       *tview.TextView
-	
+	sessionList    *tview.List
+	sessionDetails *tview.TextView
+	outputView     *tview.TextView
+	inputField     *tview.InputField
+	statusBar      *tview.TextView
+
 	// State
-	currentSession  *claude.Session
-	outputChannel   <-chan []byte
-	refreshTicker   *time.Ticker
-	
+	currentSession *claude.Session
+	outputChannel  <-chan []byte
+	refreshTicker  *time.Ticker
+
 	// Callbacks
 	onSessionSelect func(session *claude.Session)
 	onSessionStart  func(sessionID string)
@@ -74,8 +74,8 @@ func (sv *SessionView) setupUI() {
 	sv.sessionDetails.
 		SetBorder(true).
 		SetTitle(" Session Details ").
-		SetTitleAlign(tview.AlignLeft).
-		SetDynamicColors(true).
+		SetTitleAlign(tview.AlignLeft)
+	sv.sessionDetails.SetDynamicColors(true).
 		SetWrap(true)
 
 	// Create output view
@@ -83,8 +83,8 @@ func (sv *SessionView) setupUI() {
 	sv.outputView.
 		SetBorder(true).
 		SetTitle(" Output ").
-		SetTitleAlign(tview.AlignLeft).
-		SetScrollable(true).
+		SetTitleAlign(tview.AlignLeft)
+	sv.outputView.SetScrollable(true).
 		SetWrap(true).
 		SetMaxLines(1000) // Limit output history
 
@@ -93,8 +93,8 @@ func (sv *SessionView) setupUI() {
 	sv.inputField.
 		SetBorder(true).
 		SetTitle(" Input ").
-		SetTitleAlign(tview.AlignLeft).
-		SetPlaceholder("Enter command...")
+		SetTitleAlign(tview.AlignLeft)
+	sv.inputField.SetPlaceholder("Enter command...")
 
 	// Create status bar
 	sv.statusBar = tview.NewTextView()
@@ -198,23 +198,28 @@ func (sv *SessionView) startRefreshTimer() {
 // refreshSessionList refreshes the session list
 func (sv *SessionView) refreshSessionList() {
 	sessions := sv.manager.ListSessions()
-	
+
 	sv.sessionList.Clear()
-	
+
 	for _, session := range sessions {
 		metadata := session.GetMetadata()
-		
+
 		// Format session item
 		mainText := metadata.Name
 		if mainText == "" {
 			mainText = metadata.ID
 		}
+
+		var duration time.Duration
+		if metadata.Stats != nil {
+			duration = metadata.Stats.Duration
+		}
 		
 		secondaryText := fmt.Sprintf("[%s] %s - %s",
 			metadata.State.String(),
 			metadata.CreatedAt.Format("Jan 2 15:04"),
-			sv.formatDuration(session.GetDuration()))
-		
+			sv.formatDuration(duration))
+
 		// Color code by state
 		var color tcell.Color
 		switch metadata.State {
@@ -229,11 +234,11 @@ func (sv *SessionView) refreshSessionList() {
 		default:
 			color = tcell.ColorWhite
 		}
-		
+
 		sv.sessionList.AddItem(mainText, secondaryText, 0, nil).
 			SetSecondaryTextColor(color)
 	}
-	
+
 	sv.updateStatusBar()
 }
 
@@ -273,42 +278,69 @@ func (sv *SessionView) updateSessionDetails() {
 	}
 
 	metadata := sv.currentSession.GetMetadata()
+
+	workingDir := ""
+	if metadata.Config != nil {
+		workingDir = metadata.Config.WorkingDir
+	}
 	
-	details := fmt.Sprintf(`[yellow]Session ID:[white] %s
+	tags := ""
+	if len(metadata.Tags) > 0 {
+		tags = strings.Join(metadata.Tags, ", ")
+	} else {
+		tags = "none"
+	}
+	
+	details := ""
+	if metadata.Stats != nil {
+		details = fmt.Sprintf(`[yellow]Session ID:[white] %s
 [yellow]Name:[white] %s
 [yellow]State:[white] %s
 [yellow]Created:[white] %s
 [yellow]Updated:[white] %s
 [yellow]Working Dir:[white] %s
-[yellow]Process ID:[white] %s
 
 [yellow]Statistics:[white]
-  Commands: %d
-  Input Bytes: %s
+  Input Count: %d
   Output Bytes: %s
   Duration: %s
   Last Active: %s
-  Peak Memory: %d MB
-  Avg CPU: %.1f%%
+  Process Count: %d
+  Error Count: %d
 
-[yellow]Tags:[white] %s
-[yellow]Description:[white] %s`,
-		metadata.ID,
-		metadata.Name,
-		metadata.State.String(),
-		metadata.CreatedAt.Format("2006-01-02 15:04:05"),
-		metadata.UpdatedAt.Format("2006-01-02 15:04:05"),
-		metadata.WorkingDir,
-		metadata.ProcessID,
-		metadata.Stats.TotalCommands,
-		sv.formatBytes(metadata.Stats.TotalInputBytes),
-		sv.formatBytes(metadata.Stats.TotalOutputBytes),
-		sv.formatDuration(metadata.Stats.Duration),
-		sv.formatTime(metadata.Stats.LastActiveAt),
-		metadata.Stats.PeakMemoryMB,
-		metadata.Stats.AvgCPUPercent,
-		strings.Join(metadata.Tags, ", "),
-		metadata.Description)
+[yellow]Tags:[white] %s`,
+			metadata.ID,
+			metadata.Name,
+			metadata.State.String(),
+			metadata.CreatedAt.Format("2006-01-02 15:04:05"),
+			metadata.UpdatedAt.Format("2006-01-02 15:04:05"),
+			workingDir,
+			metadata.Stats.InputCount,
+			sv.formatBytes(metadata.Stats.OutputBytes),
+			sv.formatDuration(metadata.Stats.Duration),
+			sv.formatTime(metadata.Stats.LastActive),
+			metadata.Stats.ProcessCount,
+			metadata.Stats.ErrorCount,
+			tags)
+	} else {
+		details = fmt.Sprintf(`[yellow]Session ID:[white] %s
+[yellow]Name:[white] %s
+[yellow]State:[white] %s
+[yellow]Created:[white] %s
+[yellow]Updated:[white] %s
+[yellow]Working Dir:[white] %s
+
+[yellow]Statistics:[white] Not available
+
+[yellow]Tags:[white] %s`,
+			metadata.ID,
+			metadata.Name,
+			metadata.State.String(),
+			metadata.CreatedAt.Format("2006-01-02 15:04:05"),
+			metadata.UpdatedAt.Format("2006-01-02 15:04:05"),
+			workingDir,
+			tags)
+	}
 
 	sv.sessionDetails.SetText(details)
 }
@@ -368,7 +400,7 @@ func (sv *SessionView) sendInput() {
 func (sv *SessionView) createNewSession() {
 	// Simple implementation - in a real app, you'd show a dialog
 	sessionName := fmt.Sprintf("session-%d", time.Now().Unix())
-	
+
 	session, err := sv.manager.CreateSession(sessionName, nil)
 	if err != nil {
 		sv.showMessage(fmt.Sprintf("Failed to create session: %v", err), tcell.ColorRed)
@@ -401,7 +433,7 @@ func (sv *SessionView) startSelectedSession() {
 	}
 }
 
-// terminateSelectedSession terminates the selected session  
+// terminateSelectedSession terminates the selected session
 func (sv *SessionView) terminateSelectedSession() {
 	if sv.currentSession == nil {
 		sv.showMessage("No session selected", tcell.ColorRed)
@@ -480,14 +512,14 @@ func (sv *SessionView) deleteSelectedSession() {
 // updateStatusBar updates the status bar
 func (sv *SessionView) updateStatusBar() {
 	stats := sv.manager.GetStats()
-	
+
 	status := fmt.Sprintf(" Sessions: %d | Active: %d | Paused: %d | Terminated: %d | Errors: %d | [yellow]F5[white] Refresh | [yellow]n[white] New | [yellow]s[white] Start | [yellow]t[white] Stop | [yellow]p[white] Pause | [yellow]r[white] Resume | [yellow]d[white] Delete",
 		stats.TotalSessions,
 		stats.ActiveSessions,
 		stats.PausedSessions,
 		stats.TerminatedSessions,
 		stats.ErrorSessions)
-	
+
 	sv.statusBar.SetText(status)
 }
 
@@ -495,11 +527,11 @@ func (sv *SessionView) updateStatusBar() {
 func (sv *SessionView) showMessage(message string, color tcell.Color) {
 	// In a real implementation, you'd show this as a modal or notification
 	sv.logger.Info(message)
-	
+
 	// Update status bar temporarily
 	originalText := sv.statusBar.GetText(false)
 	sv.statusBar.SetText(fmt.Sprintf("[%s]%s[white]", sv.colorToString(color), message))
-	
+
 	// Restore original status after 3 seconds
 	go func() {
 		time.Sleep(3 * time.Second)
@@ -528,15 +560,15 @@ func (sv *SessionView) formatDuration(d time.Duration) string {
 	if d == 0 {
 		return "0s"
 	}
-	
+
 	if d < time.Minute {
 		return fmt.Sprintf("%.0fs", d.Seconds())
 	}
-	
+
 	if d < time.Hour {
 		return fmt.Sprintf("%.1fm", d.Minutes())
 	}
-	
+
 	return fmt.Sprintf("%.1fh", d.Hours())
 }
 
@@ -545,18 +577,18 @@ func (sv *SessionView) formatBytes(bytes int64) string {
 	if bytes == 0 {
 		return "0 B"
 	}
-	
+
 	const unit = 1024
 	if bytes < unit {
 		return fmt.Sprintf("%d B", bytes)
 	}
-	
+
 	div, exp := int64(unit), 0
 	for n := bytes / unit; n >= unit; n /= unit {
 		div *= unit
 		exp++
 	}
-	
+
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
@@ -565,11 +597,11 @@ func (sv *SessionView) formatTime(t time.Time) string {
 	if t.IsZero() {
 		return "Never"
 	}
-	
+
 	if time.Since(t) < time.Hour*24 {
 		return t.Format("15:04:05")
 	}
-	
+
 	return t.Format("Jan 2 15:04")
 }
 
