@@ -1,10 +1,8 @@
 package claude
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"sync"
@@ -34,19 +32,19 @@ type ResourceLimits struct {
 // DefaultResourceLimits returns sensible default resource limits
 func DefaultResourceLimits() *ResourceLimits {
 	return &ResourceLimits{
-		MaxMemoryMB:    1024, // 1GB
-		MaxCPUPercent:  80.0, // 80% CPU
-		MaxDiskUsageMB: 512,  // 512MB
+		MaxMemoryMB:    1024,          // 1GB
+		MaxCPUPercent:  80.0,          // 80% CPU
+		MaxDiskUsageMB: 512,           // 512MB
 		MaxDuration:    time.Hour * 2, // 2 hours
 	}
 }
 
 // ExecutionResult contains the result of a Claude Code execution
 type ExecutionResult struct {
-	ExitCode   int           // Process exit code
-	Output     []byte        // Combined stdout/stderr output
-	Duration   time.Duration // Execution duration
-	Error      error         // Execution error if any
+	ExitCode      int            // Process exit code
+	Output        []byte         // Combined stdout/stderr output
+	Duration      time.Duration  // Execution duration
+	Error         error          // Execution error if any
 	ResourceUsage *ResourceUsage // Resource usage statistics
 }
 
@@ -61,12 +59,12 @@ type ResourceUsage struct {
 
 // Executor manages Claude Code process execution with proper resource management
 type Executor struct {
-	logger       *zap.Logger
-	claudePath   string           // Path to claude executable
-	mu           sync.RWMutex     // Protects concurrent access
-	activeProcs  map[string]*Process // Active processes by ID
-	resourceMon  *ResourceMonitor    // Resource usage monitor
-	defaultOpts  *CommandOptions     // Default execution options
+	logger      *zap.Logger
+	claudePath  string              // Path to claude executable
+	mu          sync.RWMutex        // Protects concurrent access
+	activeProcs map[string]*Process // Active processes by ID
+	resourceMon *ResourceMonitor    // Resource usage monitor
+	defaultOpts *CommandOptions     // Default execution options
 }
 
 // NewExecutor creates a new Claude Code executor
@@ -175,19 +173,57 @@ func (e *Executor) ExecuteAsync(ctx context.Context, opts *CommandOptions) (*Pro
 	e.activeProcs[process.ID] = process
 	e.mu.Unlock()
 
-	// Start process asynchronously
+	// Start the process immediately (not in a goroutine)
+	if err := process.Start(); err != nil {
+		e.mu.Lock()
+		delete(e.activeProcs, process.ID)
+		e.mu.Unlock()
+		return nil, fmt.Errorf("failed to start process: %w", err)
+	}
+
+	// Start resource monitoring after process is started
+	if e.resourceMon != nil && process.cmd.Process != nil {
+		e.resourceMon.StartMonitoring(process.ID, process.cmd.Process)
+	}
+
+	// Send initial input if provided
+	if mergedOpts.InputText != "" {
+		if err := process.SendInput(mergedOpts.InputText); err != nil {
+			e.logger.Warn("failed to send initial input",
+				zap.String("process_id", process.ID),
+				zap.Error(err))
+		}
+	}
+
+	// Start a goroutine to handle cleanup when process finishes
 	go func() {
 		defer func() {
 			e.mu.Lock()
 			delete(e.activeProcs, process.ID)
 			e.mu.Unlock()
+			
+			// Stop resource monitoring when process finishes
+			if e.resourceMon != nil {
+				e.resourceMon.StopMonitoring(process.ID)
+			}
 		}()
 
-		_, err := e.executeProcess(ctx, process, mergedOpts)
+		// Wait for process to complete with context timeout
+		ctx, cancel := context.WithTimeout(context.Background(), mergedOpts.Timeout)
+		defer cancel()
+		
+		_, err := process.WaitWithContext(ctx)
 		if err != nil {
-			e.logger.Error("async process execution failed",
-				zap.String("process_id", process.ID),
-				zap.Error(err))
+			if err == context.DeadlineExceeded {
+				e.logger.Warn("async process execution timed out",
+					zap.String("process_id", process.ID))
+				// Force kill the process if it timed out
+				process.Kill()
+			} else {
+				e.logger.Error("async process execution failed",
+					zap.String("process_id", process.ID),
+					zap.Error(err))
+			}
 		}
 	}()
 
@@ -230,14 +266,14 @@ func (e *Executor) createProcess(ctx context.Context, opts *CommandOptions) (*Pr
 func (e *Executor) executeProcess(ctx context.Context, process *Process, opts *CommandOptions) (*ExecutionResult, error) {
 	startTime := time.Now()
 
-	// Start resource monitoring
-	if e.resourceMon != nil {
-		e.resourceMon.StartMonitoring(process.ID, process.cmd.Process)
-	}
-
-	// Start the process
+	// Start the process first
 	if err := process.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start process: %w", err)
+	}
+
+	// Start resource monitoring after process is started
+	if e.resourceMon != nil && process.cmd.Process != nil {
+		e.resourceMon.StartMonitoring(process.ID, process.cmd.Process)
 	}
 
 	// Send initial input if provided
@@ -256,7 +292,7 @@ func (e *Executor) executeProcess(ctx context.Context, process *Process, opts *C
 	if opts.Timeout > 0 {
 		timeoutCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 		defer cancel()
-		
+
 		result, err = process.WaitWithContext(timeoutCtx)
 	} else {
 		result, err = process.Wait()

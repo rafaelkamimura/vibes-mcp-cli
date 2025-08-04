@@ -16,7 +16,7 @@ func TestSecurityValidator_ValidatePath(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
 	forbiddenDir := testutil.CreateTestDir(t, tempDir, "forbidden")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{forbiddenDir},
@@ -24,9 +24,9 @@ func TestSecurityValidator_ValidatePath(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024, // 1MB
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
 		name    string
 		path    string
@@ -81,7 +81,7 @@ func TestSecurityValidator_ValidatePath(t *testing.T) {
 			errType: ErrAccessDenied,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidatePath(tt.path)
@@ -100,7 +100,7 @@ func TestSecurityValidator_ValidatePath(t *testing.T) {
 func TestSecurityValidator_PathTraversalAttacks(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -108,9 +108,9 @@ func TestSecurityValidator_PathTraversalAttacks(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	// Various path traversal attack vectors
 	attacks := []string{
 		"../../../etc/passwd",
@@ -127,13 +127,13 @@ func TestSecurityValidator_PathTraversalAttacks(t *testing.T) {
 		"..//..//..//etc//passwd",
 		".../.../...//etc/passwd",
 	}
-	
+
 	for _, attack := range attacks {
 		t.Run("attack_"+attack, func(t *testing.T) {
 			// Test with attack vector directly
 			err := validator.ValidatePath(attack)
 			assert.Error(t, err, "Attack vector should be blocked: %s", attack)
-			
+
 			// Test with attack vector appended to allowed path
 			attackPath := filepath.Join(allowedDir, attack)
 			err = validator.ValidatePath(attackPath)
@@ -145,11 +145,11 @@ func TestSecurityValidator_PathTraversalAttacks(t *testing.T) {
 func TestSecurityValidator_ValidateRead(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
-	
+
 	// Create test files
 	smallFile := testutil.CreateTestFile(t, allowedDir, "small.txt", "small content")
 	largeFile := testutil.CreateLargeFile(t, allowedDir, "large.txt", 2) // 2MB file
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -157,9 +157,9 @@ func TestSecurityValidator_ValidateRead(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024, // 1MB limit
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
 		name    string
 		path    string
@@ -186,7 +186,7 @@ func TestSecurityValidator_ValidateRead(t *testing.T) {
 			wantErr: false, // ValidateRead allows directories
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidateRead(tt.path)
@@ -203,7 +203,7 @@ func TestSecurityValidator_ValidateDirectory(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
 	testFile := testutil.CreateTestFile(t, allowedDir, "test.txt", "content")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -211,9 +211,9 @@ func TestSecurityValidator_ValidateDirectory(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
 		name    string
 		path    string
@@ -235,7 +235,7 @@ func TestSecurityValidator_ValidateDirectory(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidateDirectory(tt.path)
@@ -251,7 +251,7 @@ func TestSecurityValidator_ValidateDirectory(t *testing.T) {
 func TestSecurityValidator_GetDepth(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -259,14 +259,14 @@ func TestSecurityValidator_GetDepth(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
-		name        string
-		path        string
-		wantDepth   int
-		wantErr     bool
+		name      string
+		path      string
+		wantDepth int
+		wantErr   bool
 	}{
 		{
 			name:      "root level",
@@ -299,7 +299,7 @@ func TestSecurityValidator_GetDepth(t *testing.T) {
 			wantErr:   true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			depth, err := validator.GetDepth(tt.path)
@@ -316,12 +316,12 @@ func TestSecurityValidator_GetDepth(t *testing.T) {
 func TestSecurityValidator_HiddenFiles(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
-	
+
 	// Create hidden files and directories
 	testutil.CreateTestFile(t, allowedDir, ".hidden_file", "hidden content")
 	testutil.CreateTestDir(t, allowedDir, ".hidden_dir")
 	testutil.CreateTestFile(t, allowedDir, "normal_file", "normal content")
-	
+
 	tests := []struct {
 		name        string
 		allowHidden bool
@@ -359,7 +359,7 @@ func TestSecurityValidator_HiddenFiles(t *testing.T) {
 			wantErr:     false,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &SecurityConfig{
@@ -369,10 +369,10 @@ func TestSecurityValidator_HiddenFiles(t *testing.T) {
 				AllowHidden:    tt.allowHidden,
 				MaxFileSize:    1024 * 1024,
 			}
-			
+
 			validator := NewSecurityValidator(config)
 			err := validator.ValidatePath(tt.path)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.ErrorIs(t, err, ErrAccessDenied)
@@ -387,20 +387,20 @@ func TestSecurityValidator_SymlinkSecurity(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
 	forbiddenDir := testutil.CreateTestDir(t, tempDir, "forbidden")
-	
+
 	// Create test files
 	allowedFile := testutil.CreateTestFile(t, allowedDir, "allowed.txt", "allowed content")
 	forbiddenFile := testutil.CreateTestFile(t, forbiddenDir, "forbidden.txt", "forbidden content")
-	
+
 	// Create symlinks
 	symlinkToAllowed := filepath.Join(allowedDir, "link_to_allowed")
 	symlinkToForbidden := filepath.Join(allowedDir, "link_to_forbidden")
 	symlinkToOutside := filepath.Join(allowedDir, "link_to_outside")
-	
+
 	testutil.CreateSymlink(t, allowedFile, symlinkToAllowed)
 	testutil.CreateSymlink(t, forbiddenFile, symlinkToForbidden)
 	testutil.CreateSymlink(t, "/etc/passwd", symlinkToOutside)
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{forbiddenDir},
@@ -408,9 +408,9 @@ func TestSecurityValidator_SymlinkSecurity(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
 		name    string
 		path    string
@@ -432,7 +432,7 @@ func TestSecurityValidator_SymlinkSecurity(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidatePath(tt.path)
@@ -448,7 +448,7 @@ func TestSecurityValidator_SymlinkSecurity(t *testing.T) {
 func TestSecurityValidator_SanitizePath(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -456,9 +456,9 @@ func TestSecurityValidator_SanitizePath(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
 		name     string
 		path     string
@@ -482,7 +482,7 @@ func TestSecurityValidator_SanitizePath(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sanitized, err := validator.SanitizePath(tt.path)
@@ -499,19 +499,19 @@ func TestSecurityValidator_SanitizePath(t *testing.T) {
 
 func TestDefaultSecurityConfig(t *testing.T) {
 	config := DefaultSecurityConfig()
-	
+
 	assert.NotNil(t, config)
 	assert.NotEmpty(t, config.AllowedPaths)
 	assert.NotEmpty(t, config.ForbiddenPaths)
 	assert.Greater(t, config.MaxDepth, 0)
 	assert.Greater(t, config.MaxFileSize, int64(0))
-	
+
 	// Check that forbidden paths include sensitive directories
 	forbiddenMap := make(map[string]bool)
 	for _, path := range config.ForbiddenPaths {
 		forbiddenMap[path] = true
 	}
-	
+
 	sensitiveDirectories := []string{"/etc", "/var/log", "/proc", "/sys", "/dev", "/root"}
 	for _, sensitive := range sensitiveDirectories {
 		assert.True(t, forbiddenMap[sensitive], "Should forbid access to %s", sensitive)
@@ -523,7 +523,7 @@ func TestSecurityValidator_IsWithinAllowedPath(t *testing.T) {
 	allowedDir1 := testutil.CreateTestDir(t, tempDir, "allowed1")
 	allowedDir2 := testutil.CreateTestDir(t, tempDir, "allowed2")
 	forbiddenDir := testutil.CreateTestDir(t, tempDir, "forbidden")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir1, allowedDir2},
 		ForbiddenPaths: []string{forbiddenDir},
@@ -531,9 +531,9 @@ func TestSecurityValidator_IsWithinAllowedPath(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	tests := []struct {
 		name   string
 		path   string
@@ -565,7 +565,7 @@ func TestSecurityValidator_IsWithinAllowedPath(t *testing.T) {
 			expect: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := validator.IsWithinAllowedPath(tt.path)
@@ -577,7 +577,7 @@ func TestSecurityValidator_IsWithinAllowedPath(t *testing.T) {
 func TestSecurityValidator_ConcurrentAccess(t *testing.T) {
 	tempDir := testutil.TempDir(t)
 	allowedDir := testutil.CreateTestDir(t, tempDir, "allowed")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -585,13 +585,13 @@ func TestSecurityValidator_ConcurrentAccess(t *testing.T) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
-	
+
 	// Test concurrent access to the validator
 	const numGoroutines = 100
 	errChan := make(chan error, numGoroutines)
-	
+
 	for i := 0; i < numGoroutines; i++ {
 		go func(id int) {
 			testPath := filepath.Join(allowedDir, "test", "file.txt")
@@ -599,7 +599,7 @@ func TestSecurityValidator_ConcurrentAccess(t *testing.T) {
 			errChan <- err
 		}(i)
 	}
-	
+
 	// Collect results
 	for i := 0; i < numGoroutines; i++ {
 		err := <-errChan
@@ -611,7 +611,7 @@ func TestSecurityValidator_ConcurrentAccess(t *testing.T) {
 func BenchmarkSecurityValidator_ValidatePath(b *testing.B) {
 	tempDir := testutil.TempDir(b)
 	allowedDir := testutil.CreateTestDir(b, tempDir, "allowed")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{"/etc", "/var", "/tmp"},
@@ -619,10 +619,10 @@ func BenchmarkSecurityValidator_ValidatePath(b *testing.B) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
 	testPath := filepath.Join(allowedDir, "deep", "nested", "path", "test.txt")
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = validator.ValidatePath(testPath)
@@ -632,7 +632,7 @@ func BenchmarkSecurityValidator_ValidatePath(b *testing.B) {
 func BenchmarkSecurityValidator_PathTraversalCheck(b *testing.B) {
 	tempDir := testutil.TempDir(b)
 	allowedDir := testutil.CreateTestDir(b, tempDir, "allowed")
-	
+
 	config := &SecurityConfig{
 		AllowedPaths:   []string{allowedDir},
 		ForbiddenPaths: []string{},
@@ -640,10 +640,10 @@ func BenchmarkSecurityValidator_PathTraversalCheck(b *testing.B) {
 		AllowHidden:    false,
 		MaxFileSize:    1024 * 1024,
 	}
-	
+
 	validator := NewSecurityValidator(config)
 	maliciousPath := filepath.Join(allowedDir, "../../../etc/passwd")
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = validator.ValidatePath(maliciousPath)

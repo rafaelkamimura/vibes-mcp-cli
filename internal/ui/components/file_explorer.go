@@ -26,14 +26,14 @@ const (
 type FileExplorerAction int
 
 const (
-	ActionView FileExplorerAction = iota // View file content
-	ActionEdit                           // Edit file
-	ActionSendToClaude                   // Send file to Claude Code
-	ActionAddToSession                   // Add file to current session
-	ActionCopy                           // Copy file path
-	ActionDelete                         // Delete file
-	ActionRename                         // Rename file
-	ActionRefresh                        // Refresh directory
+	ActionView         FileExplorerAction = iota // View file content
+	ActionEdit                                   // Edit file
+	ActionSendToClaude                           // Send file to Claude Code
+	ActionAddToSession                           // Add file to current session
+	ActionCopy                                   // Copy file path
+	ActionDelete                                 // Delete file
+	ActionRename                                 // Rename file
+	ActionRefresh                                // Refresh directory
 )
 
 // FileExplorerConfig holds configuration for the file explorer
@@ -49,10 +49,10 @@ type FileExplorerConfig struct {
 
 // FileExplorerCallbacks defines callback functions for file explorer events
 type FileExplorerCallbacks struct {
-	OnFileSelect    func(path string, fileType files.FileType)
-	OnFileAction    func(action FileExplorerAction, path string)
+	OnFileSelect      func(path string, fileType files.FileType)
+	OnFileAction      func(action FileExplorerAction, path string)
 	OnDirectoryChange func(path string)
-	OnError         func(err error)
+	OnError           func(err error)
 }
 
 // FileExplorer provides a tview-based file explorer component
@@ -68,12 +68,12 @@ type FileExplorer struct {
 	mode      FileExplorerMode
 
 	// UI components
-	treeView     *tview.TreeView
-	previewView  *tview.TextView
-	searchInput  *tview.InputField
-	statusBar    *tview.TextView
-	breadcrumb   *tview.TextView
-	helpText     *tview.TextView
+	treeView    *tview.TreeView
+	previewView *tview.TextView
+	searchInput *tview.InputField
+	statusBar   *tview.TextView
+	breadcrumb  *tview.TextView
+	helpText    *tview.TextView
 
 	// State
 	currentNode    *files.FileNode
@@ -133,7 +133,7 @@ func (fe *FileExplorer) initNavigator() {
 	}
 
 	fe.navigator = files.NewNavigator(securityConfig)
-	
+
 	// Set root path
 	if err := fe.navigator.SetRoot(fe.config.RootPath); err != nil {
 		fe.handleError(fmt.Errorf("failed to set root path: %w", err))
@@ -183,7 +183,7 @@ func (fe *FileExplorer) initUI() {
 
 	// Setup layout
 	fe.setupLayout()
-	
+
 	// Initialize tree content
 	fe.refreshTree()
 	fe.updateBreadcrumb()
@@ -198,7 +198,7 @@ func (fe *FileExplorer) setupLayout() {
 
 	// Middle section: tree view and preview
 	middleFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
-	
+
 	if fe.config.EnablePreview {
 		middleFlex.AddItem(fe.treeView, 0, 1, true).
 			AddItem(fe.previewView, 0, 1, false)
@@ -559,13 +559,13 @@ func (fe *FileExplorer) previewFile(node *tview.TreeNode) {
 	}
 
 	path := ref.(string)
-	
+
 	// Clear preview
 	fe.previewView.Clear()
 
 	if !fe.navigator.IsTextFile(path) {
 		fileType := fe.navigator.GetFileType(path)
-		fe.previewView.SetText(fmt.Sprintf("📄 %s\n\nBinary file - cannot preview\nType: %s", 
+		fe.previewView.SetText(fmt.Sprintf("📄 %s\n\nBinary file - cannot preview\nType: %s",
 			filepath.Base(path), fileType.String()))
 		return
 	}
@@ -590,7 +590,7 @@ func (fe *FileExplorer) sendToClaude(node *tview.TreeNode) {
 	}
 
 	path := ref.(string)
-	
+
 	if fe.callbacks.OnFileAction != nil {
 		fe.callbacks.OnFileAction(ActionSendToClaude, path)
 	}
@@ -623,7 +623,7 @@ func (fe *FileExplorer) copyPath(node *tview.TreeNode) {
 	}
 
 	path := ref.(string)
-	
+
 	if fe.callbacks.OnFileAction != nil {
 		fe.callbacks.OnFileAction(ActionCopy, path)
 	}
@@ -639,7 +639,7 @@ func (fe *FileExplorer) deleteFile(node *tview.TreeNode) {
 	}
 
 	path := ref.(string)
-	
+
 	if fe.callbacks.OnFileAction != nil {
 		fe.callbacks.OnFileAction(ActionDelete, path)
 	}
@@ -653,7 +653,7 @@ func (fe *FileExplorer) renameFile(node *tview.TreeNode) {
 	}
 
 	path := ref.(string)
-	
+
 	if fe.callbacks.OnFileAction != nil {
 		fe.callbacks.OnFileAction(ActionRename, path)
 	}
@@ -663,7 +663,7 @@ func (fe *FileExplorer) renameFile(node *tview.TreeNode) {
 func (fe *FileExplorer) toggleHiddenFiles() {
 	fe.config.ShowHiddenFiles = !fe.config.ShowHiddenFiles
 	fe.refreshTree()
-	
+
 	status := "Hidden files: "
 	if fe.config.ShowHiddenFiles {
 		status += "shown"
@@ -719,7 +719,7 @@ func (fe *FileExplorer) updateBreadcrumb() {
 // updateStatus updates the status bar
 func (fe *FileExplorer) updateStatus(message ...string) {
 	currentPath := fe.navigator.GetCurrentPath()
-	
+
 	var statusText string
 	if len(message) > 0 {
 		statusText = message[0]
@@ -788,7 +788,7 @@ func (fe *FileExplorer) SetCurrentPath(path string) error {
 	fe.refreshTree()
 	fe.updateBreadcrumb()
 	fe.updateStatus()
-	
+
 	return nil
 }
 

@@ -35,7 +35,7 @@ type SecurityConfig struct {
 func DefaultSecurityConfig() *SecurityConfig {
 	cwd, _ := os.Getwd()
 	homeDir, _ := os.UserHomeDir()
-	
+
 	return &SecurityConfig{
 		AllowedPaths: []string{cwd, homeDir},
 		ForbiddenPaths: []string{

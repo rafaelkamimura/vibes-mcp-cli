@@ -12,18 +12,18 @@ import (
 
 // FileNode represents a node in the file tree
 type FileNode struct {
-	Path         string      // Full path to the file/directory
-	Name         string      // File/directory name
-	IsDir        bool        // Whether this is a directory
-	Size         int64       // File size in bytes
-	ModTime      time.Time   // Last modification time
-	FileType     FileType    // Detected file type
-	Children     []*FileNode // Child nodes (for directories)
-	Parent       *FileNode   // Parent node
-	IsExpanded   bool        // Whether directory is expanded in UI
-	IsLoaded     bool        // Whether children have been loaded
-	IsSelected   bool        // Whether this node is currently selected
-	Depth        int         // Depth in the tree (for indentation)
+	Path       string      // Full path to the file/directory
+	Name       string      // File/directory name
+	IsDir      bool        // Whether this is a directory
+	Size       int64       // File size in bytes
+	ModTime    time.Time   // Last modification time
+	FileType   FileType    // Detected file type
+	Children   []*FileNode // Child nodes (for directories)
+	Parent     *FileNode   // Parent node
+	IsExpanded bool        // Whether directory is expanded in UI
+	IsLoaded   bool        // Whether children have been loaded
+	IsSelected bool        // Whether this node is currently selected
+	Depth      int         // Depth in the tree (for indentation)
 }
 
 // IsRoot returns true if this is a root node
@@ -133,7 +133,7 @@ type Navigator struct {
 // NewNavigator creates a new file navigator with security validation
 func NewNavigator(config *SecurityConfig) *Navigator {
 	validator := NewSecurityValidator(config)
-	
+
 	return &Navigator{
 		validator: validator,
 		detector:  NewSyntaxDetector(),
@@ -203,7 +203,7 @@ func (n *Navigator) Navigate(path string) error {
 
 	n.currentPath = cleanPath
 	n.history.Push(cleanPath)
-	
+
 	return nil
 }
 
@@ -278,7 +278,7 @@ func (n *Navigator) LoadChildren(node *FileNode) error {
 	// Create child nodes
 	for _, entry := range entries {
 		childPath := filepath.Join(node.Path, entry.Name())
-		
+
 		// Skip if path validation fails
 		if err := n.validator.ValidatePath(childPath); err != nil {
 			continue
@@ -290,7 +290,7 @@ func (n *Navigator) LoadChildren(node *FileNode) error {
 		}
 
 		fileType := n.detector.DetectFileType(entry.Name())
-		
+
 		child := &FileNode{
 			Path:     childPath,
 			Name:     entry.Name(),
@@ -483,7 +483,7 @@ func (n *Navigator) GetBreadcrumb() []string {
 
 	var parts []string
 	path := n.currentPath
-	
+
 	for path != "/" && path != "." {
 		parts = append([]string{filepath.Base(path)}, parts...)
 		parent := filepath.Dir(path)

@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -36,15 +35,15 @@ func DefaultManagerConfig() *ManagerConfig {
 
 // Manager manages multiple Claude Code sessions
 type Manager struct {
-	config    *ManagerConfig
-	executor  *claude.Executor
-	registry  *Registry
-	logger    *zap.Logger
-	mu        sync.RWMutex
-	sessions  map[string]*claude.Session // Session ID -> Session
-	ctx       context.Context
-	cancel    context.CancelFunc
-	cleanup   *time.Ticker
+	config   *ManagerConfig
+	executor *claude.Executor
+	registry *Registry
+	logger   *zap.Logger
+	mu       sync.RWMutex
+	sessions map[string]*claude.Session // Session ID -> Session
+	ctx      context.Context
+	cancel   context.CancelFunc
+	cleanup  *time.Ticker
 }
 
 // NewManager creates a new session manager
@@ -260,33 +259,50 @@ func (m *Manager) DeleteSession(sessionID string, force bool) error {
 		return fmt.Errorf("session not found: %s", sessionID)
 	}
 
-	// Terminate if active and force is true
+	// Terminate if active and force is true, with timeout
 	if session.IsActive() || session.IsPaused() {
 		if !force {
 			return fmt.Errorf("session is active, use force=true to terminate and delete")
 		}
-		if err := session.Terminate(); err != nil {
-			m.logger.Error("failed to terminate session during deletion",
-				zap.String("session_id", sessionID),
-				zap.Error(err))
+		
+		// Use goroutine with timeout to prevent hanging
+		terminateDone := make(chan error, 1)
+		go func() {
+			terminateDone <- session.Terminate()
+		}()
+		
+		select {
+		case err := <-terminateDone:
+			if err != nil {
+				m.logger.Error("failed to terminate session during deletion",
+					zap.String("session_id", sessionID),
+					zap.Error(err))
+			}
+		case <-time.After(10 * time.Second):
+			m.logger.Error("session termination timed out during deletion",
+				zap.String("session_id", sessionID))
 		}
 	}
 
-	// Delete from registry
-	if err := m.registry.UnregisterSession(sessionID); err != nil {
-		m.logger.Error("failed to unregister session",
-			zap.String("session_id", sessionID),
-			zap.Error(err))
-	}
+	// Delete from registry (non-blocking)
+	go func() {
+		if err := m.registry.UnregisterSession(sessionID); err != nil {
+			m.logger.Error("failed to unregister session",
+				zap.String("session_id", sessionID),
+				zap.Error(err))
+		}
+	}()
 
-	// Delete session files
-	if err := session.Delete(); err != nil {
-		m.logger.Error("failed to delete session files",
-			zap.String("session_id", sessionID),
-			zap.Error(err))
-	}
+	// Delete session files (non-blocking)
+	go func() {
+		if err := session.Delete(); err != nil {
+			m.logger.Error("failed to delete session files",
+				zap.String("session_id", sessionID),
+				zap.Error(err))
+		}
+	}()
 
-	// Remove from memory
+	// Remove from memory immediately
 	delete(m.sessions, sessionID)
 
 	m.logger.Info("session deleted",
@@ -568,7 +584,7 @@ func (m *Manager) Close() error {
 		m.logger.Error("failed to save sessions during shutdown", zap.Error(err))
 	}
 
-	// Terminate all active sessions
+	// Terminate all active sessions with timeout
 	m.mu.RLock()
 	sessions := make([]*claude.Session, 0, len(m.sessions))
 	for _, session := range m.sessions {
@@ -576,14 +592,34 @@ func (m *Manager) Close() error {
 	}
 	m.mu.RUnlock()
 
-	for _, session := range sessions {
-		if session.IsActive() || session.IsPaused() {
-			if err := session.Terminate(); err != nil {
-				m.logger.Error("failed to terminate session during shutdown",
-					zap.String("session_id", session.GetID()),
-					zap.Error(err))
+	// Use channel to coordinate termination
+	terminationDone := make(chan struct{})
+	go func() {
+		defer close(terminationDone)
+		var wg sync.WaitGroup
+		
+		for _, session := range sessions {
+			if session.IsActive() || session.IsPaused() {
+				wg.Add(1)
+				go func(s *claude.Session) {
+					defer wg.Done()
+					if err := s.Terminate(); err != nil {
+						m.logger.Error("failed to terminate session during shutdown",
+							zap.String("session_id", s.GetID()),
+							zap.Error(err))
+					}
+				}(session)
 			}
 		}
+		wg.Wait()
+	}()
+
+	// Wait for termination with timeout
+	select {
+	case <-terminationDone:
+		m.logger.Info("all sessions terminated successfully")
+	case <-time.After(15 * time.Second):
+		m.logger.Warn("session termination timed out during shutdown")
 	}
 
 	// Close executor

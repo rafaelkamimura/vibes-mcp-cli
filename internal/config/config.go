@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -11,7 +12,6 @@ import (
 
 const defaultConfigName = ".openai-cli"
 
-// Config holds application settings.
 // Config holds application settings.
 type Config struct {
 	// APIKey for the selected provider
@@ -22,14 +22,20 @@ type Config struct {
 	Provider string
 	// LogLevel sets the logging level (debug, info, warn, error)
 	LogLevel string
-   // Templates defines a list of prompt templates for the UI dropdown.
-   Templates []string
-   // Tools defines a list of available tools for the MCP JSON-RPC proxy.
-   Tools []string
+	// Templates defines a list of prompt templates for the UI dropdown.
+	Templates []string
+	// Tools defines a list of available tools for the MCP JSON-RPC proxy.
+	Tools []string
 	// AgentURL is the Vibes Agent backend URL for agent chat and auth
 	AgentURL string
 	// AuthToken is the JWT access token obtained after login
 	AuthToken string
+
+	// Telemetry settings
+	TelemetryEnabled      bool
+	TelemetryAPIKey       string
+	TelemetryBatchSize    int
+	TelemetryFlushInterval time.Duration
 
 	// viper instance for saving config (auth token)
 	v *viper.Viper
@@ -79,9 +85,15 @@ func LoadConfig(cfgFile string) (*Config, error) {
 	v.SetDefault("provider", "openai")
 	v.SetDefault("log_level", "info")
 	v.SetDefault("agent_url", "http://localhost:8000")
-   v.SetDefault("auth_token", "")
-  // Default tools list for MCP mode
-  v.SetDefault("tools", []string{"calculator", "search_web", "weather", "translate", "filesystem"})
+	v.SetDefault("auth_token", "")
+	// Default tools list for MCP mode
+	v.SetDefault("tools", []string{"calculator", "search_web", "weather", "translate", "filesystem"})
+	
+	// Telemetry defaults
+	v.SetDefault("telemetry_enabled", false)
+	v.SetDefault("telemetry_api_key", "")
+	v.SetDefault("telemetry_batch_size", 50)
+	v.SetDefault("telemetry_flush_interval", "30s")
 
 	if err := v.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -106,23 +118,36 @@ func LoadConfig(cfgFile string) (*Config, error) {
 	agentURL := v.GetString("agent_url")
 	authToken := v.GetString("auth_token")
 
+	// Telemetry configuration
+	telemetryFlushInterval, _ := time.ParseDuration(v.GetString("telemetry_flush_interval"))
+	if telemetryFlushInterval == 0 {
+		telemetryFlushInterval = 30 * time.Second
+	}
+
 	// determine config file path for saving (if loaded or provided via flag)
 	configFileUsed := v.ConfigFileUsed()
 	if configFileUsed == "" && cfgFile != "" {
 		configFileUsed = cfgFile
 	}
 
-   cfg := &Config{
-       APIKey:     ack,
-       BaseURL:    burl,
-       Provider:   v.GetString("provider"),
-       LogLevel:   v.GetString("log_level"),
-       Templates:  v.GetStringSlice("templates"),
-       Tools:      v.GetStringSlice("tools"),
-       AgentURL:   agentURL,
-       AuthToken:  authToken,
-       v:          v,
-       configFile: configFileUsed,
-   }
+	cfg := &Config{
+		APIKey:     ack,
+		BaseURL:    burl,
+		Provider:   v.GetString("provider"),
+		LogLevel:   v.GetString("log_level"),
+		Templates:  v.GetStringSlice("templates"),
+		Tools:      v.GetStringSlice("tools"),
+		AgentURL:   agentURL,
+		AuthToken:  authToken,
+		
+		// Telemetry settings
+		TelemetryEnabled:       v.GetBool("telemetry_enabled"),
+		TelemetryAPIKey:        v.GetString("telemetry_api_key"),
+		TelemetryBatchSize:     v.GetInt("telemetry_batch_size"),
+		TelemetryFlushInterval: telemetryFlushInterval,
+		
+		v:          v,
+		configFile: configFileUsed,
+	}
 	return cfg, nil
 }

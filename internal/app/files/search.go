@@ -28,10 +28,10 @@ type SearchResult struct {
 type MatchType int
 
 const (
-	MatchFileName MatchType = iota // Matched by filename
-	MatchPath                      // Matched by path
-	MatchContent                   // Matched by file content
-	MatchExtension                 // Matched by file extension
+	MatchFileName  MatchType = iota // Matched by filename
+	MatchPath                       // Matched by path
+	MatchContent                    // Matched by file content
+	MatchExtension                  // Matched by file extension
 )
 
 // String returns the string representation of the match type
@@ -106,7 +106,7 @@ func NewFileSearcher(validator *SecurityValidator) *FileSearcher {
 	if validator == nil {
 		validator = NewSecurityValidator(nil)
 	}
-	
+
 	return &FileSearcher{
 		validator: validator,
 		detector:  NewSyntaxDetector(),
@@ -132,7 +132,7 @@ func (fs *FileSearcher) Search(ctx context.Context, rootPath string, options *Se
 		if len(options.Pattern) > 1000 {
 			return nil, fmt.Errorf("regex pattern too long (max 1000 characters)")
 		}
-		
+
 		flags := ""
 		if !options.CaseSensitive {
 			flags = "(?i)"
@@ -226,7 +226,7 @@ func (fs *FileSearcher) walkDirectory(
 
 	for _, entry := range entries {
 		fullPath := filepath.Join(currentPath, entry.Name())
-		
+
 		// Skip hidden files if not included
 		if !options.IncludeHidden && strings.HasPrefix(entry.Name(), ".") {
 			continue
@@ -246,7 +246,7 @@ func (fs *FileSearcher) walkDirectory(
 		// Check if this matches our search criteria
 		if match := fs.checkMatch(rootPath, fullPath, entry.Name(), info, options, pattern); match != nil {
 			*results = append(*results, match)
-			
+
 			// Check if we've reached the result limit
 			if options.MaxResults > 0 && len(*results) >= options.MaxResults {
 				return nil
@@ -381,7 +381,7 @@ func (fs *FileSearcher) getMatchType(name, fullPath string, options *SearchOptio
 		if fs.matchesPattern(searchPath, searchPattern) {
 			return int(MatchPath)
 		}
-		
+
 		// Check extension match
 		ext := strings.ToLower(filepath.Ext(name))
 		if ext != "" && strings.Contains(searchPattern, ext[1:]) { // Remove the dot
@@ -440,10 +440,10 @@ func (fs *FileSearcher) searchFileContent(filePath string, options *SearchOption
 func (fs *FileSearcher) QuickSearch(ctx context.Context, rootPath, pattern string) ([]*SearchResult, error) {
 	options := DefaultSearchOptions()
 	options.Pattern = pattern
-	options.MaxResults = 50  // Limit for quick searches
-	options.MaxDepth = 5     // Shallow search for speed
+	options.MaxResults = 50 // Limit for quick searches
+	options.MaxDepth = 5    // Shallow search for speed
 	options.SearchContent = false
-	
+
 	return fs.Search(ctx, rootPath, options)
 }
 
@@ -453,7 +453,7 @@ func (fs *FileSearcher) SearchByType(ctx context.Context, rootPath string, fileT
 	options.Pattern = "*"
 	options.FileTypes = fileTypes
 	options.SearchContent = false
-	
+
 	return fs.Search(ctx, rootPath, options)
 }
 
@@ -463,6 +463,6 @@ func (fs *FileSearcher) SearchByExtension(ctx context.Context, rootPath string, 
 	options.Pattern = "*"
 	options.Extensions = extensions
 	options.SearchContent = false
-	
+
 	return fs.Search(ctx, rootPath, options)
 }

@@ -37,7 +37,7 @@ func mcpHandler() http.Handler {
 		if provider == "" {
 			provider = cfg.Provider
 		}
-		cliClient, err := providers.NewClient(provider, cfg.APIKey, cfg.BaseURL)
+		cliClient, err := providers.NewClientWithAuth(provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 		if err != nil {
 			logger.Error("invalid provider", zap.String("provider", provider), zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -69,7 +69,7 @@ func mcpHandler() http.Handler {
 		if provider == "" {
 			provider = cfg.Provider
 		}
-		cliClient, err := providers.NewClient(provider, cfg.APIKey, cfg.BaseURL)
+		cliClient, err := providers.NewClientWithAuth(provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 		if err != nil {
 			logger.Error("invalid provider", zap.String("provider", provider), zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -101,7 +101,7 @@ func mcpHandler() http.Handler {
 		if provider == "" {
 			provider = cfg.Provider
 		}
-		cliClient, err := providers.NewClient(provider, cfg.APIKey, cfg.BaseURL)
+		cliClient, err := providers.NewClientWithAuth(provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 		if err != nil {
 			logger.Error("invalid provider", zap.String("provider", provider), zap.Error(err))
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -144,7 +144,7 @@ var serverCmd = &cobra.Command{
 			if provider == "" {
 				provider = cfg.Provider
 			}
-			cliClient, err := providers.NewClient(provider, cfg.APIKey, cfg.BaseURL)
+			cliClient, err := providers.NewClientWithAuth(provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 			if err != nil {
 				logger.Error("invalid provider", zap.String("provider", provider), zap.Error(err))
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -177,7 +177,7 @@ var serverCmd = &cobra.Command{
 			if provider == "" {
 				provider = cfg.Provider
 			}
-			cliClient, err := providers.NewClient(provider, cfg.APIKey, cfg.BaseURL)
+			cliClient, err := providers.NewClientWithAuth(provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 			if err != nil {
 				logger.Error("invalid provider", zap.String("provider", provider), zap.Error(err))
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -210,7 +210,7 @@ var serverCmd = &cobra.Command{
 			if provider == "" {
 				provider = cfg.Provider
 			}
-			cliClient, err := providers.NewClient(provider, cfg.APIKey, cfg.BaseURL)
+			cliClient, err := providers.NewClientWithAuth(provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 			if err != nil {
 				logger.Error("invalid provider", zap.String("provider", provider), zap.Error(err))
 				http.Error(w, err.Error(), http.StatusBadRequest)

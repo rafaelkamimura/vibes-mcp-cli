@@ -1,13 +1,13 @@
 package client
 
 import (
-   "bytes"
-   "context"
-   "encoding/json"
-   "fmt"
-   "net/http"
-   "strconv"
-   "time"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strconv"
+	"time"
 )
 
 // HTTPClient defines the interface for HTTP operations.
@@ -15,11 +15,15 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// AuthHeaderFunc is a function that sets authentication headers on a request
+type AuthHeaderFunc func(*http.Request)
+
 // Client wraps HTTP interactions with OpenAI API.
 type Client struct {
-	httpClient HTTPClient
-	apiKey     string
-	baseURL    string
+	httpClient     HTTPClient
+	apiKey         string
+	baseURL        string
+	authHeaderFunc AuthHeaderFunc
 }
 
 // NewClient creates a new OpenAI API client.
@@ -28,6 +32,34 @@ func NewClient(apiKey, baseURL string) *Client {
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		apiKey:     apiKey,
 		baseURL:    baseURL,
+	}
+}
+
+// NewClientWithAuth creates a new client with custom authentication
+func NewClientWithAuth(baseURL string, authFunc AuthHeaderFunc) *Client {
+	return &Client{
+		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		baseURL:        baseURL,
+		authHeaderFunc: authFunc,
+	}
+}
+
+// SetAuthHeaderFunc sets a custom authentication header function
+func (c *Client) SetAuthHeaderFunc(authFunc AuthHeaderFunc) {
+	c.authHeaderFunc = authFunc
+}
+
+// GetHTTPClient returns the underlying HTTP client
+func (c *Client) GetHTTPClient() HTTPClient {
+	return c.httpClient
+}
+
+// setAuth sets the appropriate authentication header
+func (c *Client) setAuth(req *http.Request) {
+	if c.authHeaderFunc != nil {
+		c.authHeaderFunc(req)
+	} else if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 }
 
@@ -86,15 +118,15 @@ func (c *Client) CreateCompletion(ctx context.Context, reqData CompletionsReques
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	c.setAuth(req)
 	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
-		}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+	}
 	var cResp CompletionsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 		return nil, err
@@ -114,15 +146,15 @@ func (c *Client) CreateChatCompletion(ctx context.Context, reqData ChatCompletio
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	c.setAuth(req)
 	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
-		}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+	}
 	var cResp ChatCompletionsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 		return nil, err
@@ -142,15 +174,15 @@ func (c *Client) CreateEmbedding(ctx context.Context, reqData EmbeddingRequest) 
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	c.setAuth(req)
 	resp, err := c.doRequest(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
-		}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("non-200 status code: %d", resp.StatusCode)
+	}
 	var eResp EmbeddingResponse
 	if err := json.NewDecoder(resp.Body).Decode(&eResp); err != nil {
 		return nil, err
