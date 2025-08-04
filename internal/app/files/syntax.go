@@ -158,9 +158,9 @@ func (ft FileType) Icon() string {
 func (ft FileType) IsEditable() bool {
 	switch ft {
 	case FileTypeText, FileTypeCode, FileTypeMarkdown, FileTypeJSON, FileTypeYAML,
-		 FileTypeXML, FileTypeHTML, FileTypeCSS, FileTypeJavaScript, FileTypeTypeScript,
-		 FileTypeGo, FileTypePython, FileTypeJava, FileTypeC, FileTypeCPP, FileTypeRust,
-		 FileTypeShell, FileTypeSQL, FileTypeDockerfile, FileTypeMakefile, FileTypeConfig:
+		FileTypeXML, FileTypeHTML, FileTypeCSS, FileTypeJavaScript, FileTypeTypeScript,
+		FileTypeGo, FileTypePython, FileTypeJava, FileTypeC, FileTypeCPP, FileTypeRust,
+		FileTypeShell, FileTypeSQL, FileTypeDockerfile, FileTypeMakefile, FileTypeConfig:
 		return true
 	default:
 		return false
@@ -186,10 +186,10 @@ func NewSyntaxDetector() *SyntaxDetector {
 		extensionMap: make(map[string]FileType),
 		filenameMap:  make(map[string]FileType),
 	}
-	
+
 	sd.initExtensionMappings()
 	sd.initFilenameMappings()
-	
+
 	return sd
 }
 
@@ -200,7 +200,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".md"] = FileTypeMarkdown
 	sd.extensionMap[".markdown"] = FileTypeMarkdown
 	sd.extensionMap[".rst"] = FileTypeMarkdown
-	
+
 	// Data formats
 	sd.extensionMap[".json"] = FileTypeJSON
 	sd.extensionMap[".yaml"] = FileTypeYAML
@@ -211,7 +211,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".conf"] = FileTypeConfig
 	sd.extensionMap[".cfg"] = FileTypeConfig
 	sd.extensionMap[".properties"] = FileTypeConfig
-	
+
 	// Web technologies
 	sd.extensionMap[".html"] = FileTypeHTML
 	sd.extensionMap[".htm"] = FileTypeHTML
@@ -225,7 +225,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".mjs"] = FileTypeJavaScript
 	sd.extensionMap[".ts"] = FileTypeTypeScript
 	sd.extensionMap[".tsx"] = FileTypeTypeScript
-	
+
 	// Programming languages
 	sd.extensionMap[".go"] = FileTypeGo
 	sd.extensionMap[".py"] = FileTypePython
@@ -247,7 +247,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".zsh"] = FileTypeShell
 	sd.extensionMap[".fish"] = FileTypeShell
 	sd.extensionMap[".sql"] = FileTypeSQL
-	
+
 	// Archives and binaries
 	sd.extensionMap[".zip"] = FileTypeArchive
 	sd.extensionMap[".tar"] = FileTypeArchive
@@ -256,7 +256,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".xz"] = FileTypeArchive
 	sd.extensionMap[".7z"] = FileTypeArchive
 	sd.extensionMap[".rar"] = FileTypeArchive
-	
+
 	// Images
 	sd.extensionMap[".png"] = FileTypeImage
 	sd.extensionMap[".jpg"] = FileTypeImage
@@ -266,7 +266,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".svg"] = FileTypeImage
 	sd.extensionMap[".webp"] = FileTypeImage
 	sd.extensionMap[".ico"] = FileTypeImage
-	
+
 	// Executables
 	sd.extensionMap[".exe"] = FileTypeExecutable
 	sd.extensionMap[".msi"] = FileTypeExecutable
@@ -274,7 +274,7 @@ func (sd *SyntaxDetector) initExtensionMappings() {
 	sd.extensionMap[".rpm"] = FileTypeExecutable
 	sd.extensionMap[".dmg"] = FileTypeExecutable
 	sd.extensionMap[".app"] = FileTypeExecutable
-	
+
 	// Logs
 	sd.extensionMap[".log"] = FileTypeLog
 	sd.extensionMap[".out"] = FileTypeLog
@@ -288,27 +288,27 @@ func (sd *SyntaxDetector) initFilenameMappings() {
 	sd.filenameMap["Dockerfile.prod"] = FileTypeDockerfile
 	sd.filenameMap["dockerfile"] = FileTypeDockerfile
 	sd.filenameMap[".dockerignore"] = FileTypeConfig
-	
+
 	// Make
 	sd.filenameMap["Makefile"] = FileTypeMakefile
 	sd.filenameMap["makefile"] = FileTypeMakefile
 	sd.filenameMap["GNUmakefile"] = FileTypeMakefile
-	
+
 	// Git
 	sd.filenameMap[".gitignore"] = FileTypeConfig
 	sd.filenameMap[".gitattributes"] = FileTypeConfig
 	sd.filenameMap[".gitmodules"] = FileTypeConfig
-	
+
 	// Go
 	sd.filenameMap["go.mod"] = FileTypeGo
 	sd.filenameMap["go.sum"] = FileTypeGo
-	
+
 	// Node.js
 	sd.filenameMap["package.json"] = FileTypeJSON
 	sd.filenameMap["package-lock.json"] = FileTypeJSON
 	sd.filenameMap["yarn.lock"] = FileTypeConfig
 	sd.filenameMap[".nvmrc"] = FileTypeConfig
-	
+
 	// Python
 	sd.filenameMap["requirements.txt"] = FileTypeConfig
 	sd.filenameMap["setup.py"] = FileTypePython
@@ -316,7 +316,7 @@ func (sd *SyntaxDetector) initFilenameMappings() {
 	sd.filenameMap["pyproject.toml"] = FileTypeConfig
 	sd.filenameMap["Pipfile"] = FileTypeConfig
 	sd.filenameMap["Pipfile.lock"] = FileTypeConfig
-	
+
 	// README files
 	sd.filenameMap["README"] = FileTypeMarkdown
 	sd.filenameMap["README.md"] = FileTypeMarkdown
@@ -325,7 +325,7 @@ func (sd *SyntaxDetector) initFilenameMappings() {
 	sd.filenameMap["CHANGELOG.md"] = FileTypeMarkdown
 	sd.filenameMap["LICENSE"] = FileTypeText
 	sd.filenameMap["LICENSE.md"] = FileTypeMarkdown
-	
+
 	// Config files
 	sd.filenameMap[".env"] = FileTypeConfig
 	sd.filenameMap[".env.example"] = FileTypeConfig
@@ -338,31 +338,31 @@ func (sd *SyntaxDetector) DetectFileType(filename string) FileType {
 	if fileType, exists := sd.filenameMap[filename]; exists {
 		return fileType
 	}
-	
+
 	// Check base filename without directory
 	baseName := filepath.Base(filename)
 	if fileType, exists := sd.filenameMap[baseName]; exists {
 		return fileType
 	}
-	
+
 	// Check extension mappings
 	ext := strings.ToLower(filepath.Ext(filename))
 	if fileType, exists := sd.extensionMap[ext]; exists {
 		return fileType
 	}
-	
+
 	// Default fallback
 	if ext == "" {
 		return FileTypeText // Files without extension are typically text
 	}
-	
+
 	return FileTypeUnknown
 }
 
 // GetLanguage returns the programming language name for syntax highlighting
 func (sd *SyntaxDetector) GetLanguage(filename string) string {
 	fileType := sd.DetectFileType(filename)
-	
+
 	switch fileType {
 	case FileTypeJavaScript, FileTypeTypeScript:
 		return "javascript"
@@ -412,6 +412,6 @@ func (sd *SyntaxDetector) IsTextFile(filename string) bool {
 // IsBinaryFile returns true if the file should be treated as a binary file
 func (sd *SyntaxDetector) IsBinaryFile(filename string) bool {
 	fileType := sd.DetectFileType(filename)
-	return fileType == FileTypeBinary || fileType == FileTypeArchive || 
-		   fileType == FileTypeExecutable || fileType == FileTypeImage
+	return fileType == FileTypeBinary || fileType == FileTypeArchive ||
+		fileType == FileTypeExecutable || fileType == FileTypeImage
 }

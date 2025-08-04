@@ -319,12 +319,12 @@ func (r *Registry) GetStats() *RegistryStats {
 
 // RegistryStats holds statistics about the registry
 type RegistryStats struct {
-	TotalSessions  int               `json:"total_sessions"`
-	StateCount     map[string]int    `json:"state_count"`
-	TagCount       map[string]int    `json:"tag_count"`
-	OldestSession  time.Time         `json:"oldest_session"`
-	NewestSession  time.Time         `json:"newest_session"`
-	LastSync       time.Time         `json:"last_sync"`
+	TotalSessions int            `json:"total_sessions"`
+	StateCount    map[string]int `json:"state_count"`
+	TagCount      map[string]int `json:"tag_count"`
+	OldestSession time.Time      `json:"oldest_session"`
+	NewestSession time.Time      `json:"newest_session"`
+	LastSync      time.Time      `json:"last_sync"`
 }
 
 // updateIndices updates all indices for a session
@@ -390,8 +390,8 @@ func (r *Registry) save() error {
 
 	// Create registry data structure
 	registryData := struct {
-		Version   string                          `json:"version"`
-		Timestamp time.Time                       `json:"timestamp"`
+		Version   string                             `json:"version"`
+		Timestamp time.Time                          `json:"timestamp"`
 		Sessions  map[string]*claude.SessionMetadata `json:"sessions"`
 	}{
 		Version:   "1.0",
@@ -439,8 +439,8 @@ func (r *Registry) load() error {
 
 	// Parse registry data
 	var registryData struct {
-		Version   string                          `json:"version"`
-		Timestamp time.Time                       `json:"timestamp"`
+		Version   string                             `json:"version"`
+		Timestamp time.Time                          `json:"timestamp"`
 		Sessions  map[string]*claude.SessionMetadata `json:"sessions"`
 	}
 

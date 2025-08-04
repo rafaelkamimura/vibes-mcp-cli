@@ -8,7 +8,7 @@ import (
 
 func TestNewSyntaxDetector(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	assert.NotNil(t, detector)
 	assert.NotEmpty(t, detector.extensionMap)
 	assert.NotEmpty(t, detector.filenameMap)
@@ -16,7 +16,7 @@ func TestNewSyntaxDetector(t *testing.T) {
 
 func TestSyntaxDetector_DetectFileType(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	tests := []struct {
 		filename     string
 		expectedType FileType
@@ -24,13 +24,13 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		// Text files
 		{"README.txt", FileTypeText},
 		{"document.txt", FileTypeText},
-		
+
 		// Markdown files
 		{"README.md", FileTypeMarkdown},
 		{"CHANGELOG.md", FileTypeMarkdown},
 		{"doc.markdown", FileTypeMarkdown},
 		{"README", FileTypeMarkdown}, // Special filename mapping
-		
+
 		// Data formats
 		{"config.json", FileTypeJSON},
 		{"package.json", FileTypeJSON}, // Special filename mapping
@@ -42,7 +42,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"server.conf", FileTypeConfig},
 		{"database.cfg", FileTypeConfig},
 		{"app.properties", FileTypeConfig},
-		
+
 		// Web technologies
 		{"index.html", FileTypeHTML},
 		{"page.htm", FileTypeHTML},
@@ -56,7 +56,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"module.mjs", FileTypeJavaScript},
 		{"main.ts", FileTypeTypeScript},
 		{"component.tsx", FileTypeTypeScript},
-		
+
 		// Programming languages
 		{"main.go", FileTypeGo},
 		{"go.mod", FileTypeGo}, // Special filename mapping
@@ -80,7 +80,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"setup.zsh", FileTypeShell},
 		{"config.fish", FileTypeShell},
 		{"query.sql", FileTypeSQL},
-		
+
 		// Docker and Make
 		{"Dockerfile", FileTypeDockerfile}, // Special filename mapping
 		{"Dockerfile.dev", FileTypeDockerfile},
@@ -88,17 +88,17 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"Makefile", FileTypeMakefile}, // Special filename mapping
 		{"makefile", FileTypeMakefile},
 		{"GNUmakefile", FileTypeMakefile},
-		
+
 		// Git files
 		{".gitignore", FileTypeConfig},
 		{".gitattributes", FileTypeConfig},
 		{".gitmodules", FileTypeConfig},
-		
+
 		// Node.js files
 		{"package-lock.json", FileTypeJSON},
 		{"yarn.lock", FileTypeConfig},
 		{".nvmrc", FileTypeConfig},
-		
+
 		// Python files
 		{"requirements.txt", FileTypeConfig},
 		{"setup.py", FileTypePython},
@@ -106,7 +106,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"pyproject.toml", FileTypeConfig},
 		{"Pipfile", FileTypeConfig},
 		{"Pipfile.lock", FileTypeConfig},
-		
+
 		// Archives and binaries
 		{"archive.zip", FileTypeArchive},
 		{"backup.tar", FileTypeArchive},
@@ -115,7 +115,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"compressed.xz", FileTypeArchive},
 		{"package.7z", FileTypeArchive},
 		{"data.rar", FileTypeArchive},
-		
+
 		// Images
 		{"photo.png", FileTypeImage},
 		{"image.jpg", FileTypeImage},
@@ -125,7 +125,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"vector.svg", FileTypeImage},
 		{"modern.webp", FileTypeImage},
 		{"icon.ico", FileTypeImage},
-		
+
 		// Executables
 		{"program.exe", FileTypeExecutable},
 		{"installer.msi", FileTypeExecutable},
@@ -133,29 +133,29 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 		{"package.rpm", FileTypeExecutable},
 		{"installer.dmg", FileTypeExecutable},
 		{"Application.app", FileTypeExecutable},
-		
+
 		// Logs
 		{"application.log", FileTypeLog},
 		{"output.out", FileTypeLog},
-		
+
 		// Environment and config files
 		{".env", FileTypeConfig},
 		{".env.example", FileTypeConfig},
 		{".editorconfig", FileTypeConfig},
-		
+
 		// License files
 		{"LICENSE", FileTypeText},
 		{"LICENSE.md", FileTypeMarkdown},
-		
+
 		// Unknown files
 		{"file.unknown", FileTypeUnknown},
 		{"data.xyz", FileTypeUnknown},
-		
+
 		// Files without extension (should default to text)
 		{"README_WITHOUT_EXT", FileTypeText},
 		{"script_no_ext", FileTypeText},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := detector.DetectFileType(tt.filename)
@@ -166,7 +166,7 @@ func TestSyntaxDetector_DetectFileType(t *testing.T) {
 
 func TestSyntaxDetector_GetLanguage(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	tests := []struct {
 		filename         string
 		expectedLanguage string
@@ -192,7 +192,7 @@ func TestSyntaxDetector_GetLanguage(t *testing.T) {
 		{"unknown.xyz", "text"},
 		{"binary.exe", "text"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := detector.GetLanguage(tt.filename)
@@ -203,7 +203,7 @@ func TestSyntaxDetector_GetLanguage(t *testing.T) {
 
 func TestSyntaxDetector_IsTextFile(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	tests := []struct {
 		filename string
 		isText   bool
@@ -219,7 +219,7 @@ func TestSyntaxDetector_IsTextFile(t *testing.T) {
 		{"Dockerfile", true},
 		{"Makefile", true},
 		{"app.log", true},
-		
+
 		// Binary files
 		{"photo.png", false},
 		{"archive.zip", false},
@@ -227,11 +227,11 @@ func TestSyntaxDetector_IsTextFile(t *testing.T) {
 		{"library.jar", false},
 		{"compiled.pyc", false},
 		{"classes.class", false},
-		
+
 		// Unknown files (default to non-text for safety)
 		{"unknown.xyz", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := detector.IsTextFile(tt.filename)
@@ -242,7 +242,7 @@ func TestSyntaxDetector_IsTextFile(t *testing.T) {
 
 func TestSyntaxDetector_IsBinaryFile(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	tests := []struct {
 		filename string
 		isBinary bool
@@ -257,7 +257,7 @@ func TestSyntaxDetector_IsBinaryFile(t *testing.T) {
 		{"classes.class", true},
 		{"installer.msi", true},
 		{"package.deb", true},
-		
+
 		// Text files
 		{"README.txt", false},
 		{"main.go", false},
@@ -269,11 +269,11 @@ func TestSyntaxDetector_IsBinaryFile(t *testing.T) {
 		{"Dockerfile", false},
 		{"Makefile", false},
 		{"app.log", false},
-		
+
 		// Unknown files (default to non-binary)
 		{"unknown.xyz", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := detector.IsBinaryFile(tt.filename)
@@ -315,7 +315,7 @@ func TestFileType_String(t *testing.T) {
 		{FileTypeArchive, "archive"},
 		{FileTypeExecutable, "executable"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.fileType.String())
@@ -356,7 +356,7 @@ func TestFileType_Icon(t *testing.T) {
 		{FileTypeArchive, "📦"},
 		{FileTypeExecutable, "⚙️"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.fileType.String(), func(t *testing.T) {
 			assert.Equal(t, tt.expectedIcon, tt.fileType.Icon())
@@ -371,18 +371,18 @@ func TestFileType_IsEditable(t *testing.T) {
 		FileTypeGo, FileTypePython, FileTypeJava, FileTypeC, FileTypeCPP, FileTypeRust,
 		FileTypeShell, FileTypeSQL, FileTypeDockerfile, FileTypeMakefile, FileTypeConfig,
 	}
-	
+
 	nonEditableTypes := []FileType{
-		FileTypeUnknown, FileTypeLog, FileTypeBinary, FileTypeImage, 
+		FileTypeUnknown, FileTypeLog, FileTypeBinary, FileTypeImage,
 		FileTypeArchive, FileTypeExecutable,
 	}
-	
+
 	for _, fileType := range editableTypes {
 		t.Run("editable_"+fileType.String(), func(t *testing.T) {
 			assert.True(t, fileType.IsEditable(), "File type should be editable: %s", fileType.String())
 		})
 	}
-	
+
 	for _, fileType := range nonEditableTypes {
 		t.Run("non_editable_"+fileType.String(), func(t *testing.T) {
 			assert.False(t, fileType.IsEditable(), "File type should not be editable: %s", fileType.String())
@@ -398,17 +398,17 @@ func TestFileType_IsReadable(t *testing.T) {
 		FileTypeShell, FileTypeSQL, FileTypeDockerfile, FileTypeMakefile, FileTypeConfig,
 		FileTypeLog, // Log files are readable but not editable
 	}
-	
+
 	nonReadableTypes := []FileType{
 		FileTypeUnknown, FileTypeBinary, FileTypeImage, FileTypeArchive, FileTypeExecutable,
 	}
-	
+
 	for _, fileType := range readableTypes {
 		t.Run("readable_"+fileType.String(), func(t *testing.T) {
 			assert.True(t, fileType.IsReadable(), "File type should be readable: %s", fileType.String())
 		})
 	}
-	
+
 	for _, fileType := range nonReadableTypes {
 		t.Run("non_readable_"+fileType.String(), func(t *testing.T) {
 			assert.False(t, fileType.IsReadable(), "File type should not be readable: %s", fileType.String())
@@ -418,7 +418,7 @@ func TestFileType_IsReadable(t *testing.T) {
 
 func TestSyntaxDetector_FilenamePriority(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	// Test that specific filename mappings take priority over extension mappings
 	tests := []struct {
 		filename     string
@@ -451,7 +451,7 @@ func TestSyntaxDetector_FilenamePriority(t *testing.T) {
 			description:  "README without extension should be detected as markdown",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := detector.DetectFileType(tt.filename)
@@ -462,7 +462,7 @@ func TestSyntaxDetector_FilenamePriority(t *testing.T) {
 
 func TestSyntaxDetector_PathHandling(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	// Test that the detector works with full paths, not just filenames
 	tests := []struct {
 		path         string
@@ -475,7 +475,7 @@ func TestSyntaxDetector_PathHandling(t *testing.T) {
 		{"/var/log/application.log", FileTypeLog},
 		{"/usr/bin/program", FileTypeText}, // No extension defaults to text
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			result := detector.DetectFileType(tt.path)
@@ -486,7 +486,7 @@ func TestSyntaxDetector_PathHandling(t *testing.T) {
 
 func TestSyntaxDetector_CaseInsensitivity(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	// Test that extension detection is case-insensitive
 	tests := []struct {
 		filename     string
@@ -500,7 +500,7 @@ func TestSyntaxDetector_CaseInsensitivity(t *testing.T) {
 		{"Stylesheet.CSS", FileTypeCSS},
 		{"Webpage.HTML", FileTypeHTML},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			result := detector.DetectFileType(tt.filename)
@@ -511,21 +511,21 @@ func TestSyntaxDetector_CaseInsensitivity(t *testing.T) {
 
 func TestSyntaxDetector_EmptyAndSpecialCases(t *testing.T) {
 	detector := NewSyntaxDetector()
-	
+
 	tests := []struct {
 		filename     string
 		expectedType FileType
 	}{
-		{"", FileTypeUnknown},           // Empty filename
-		{".", FileTypeUnknown},          // Just a dot
-		{"..", FileTypeUnknown},         // Parent directory reference
-		{"file.", FileTypeUnknown},      // Filename ending with dot but no extension
-		{".hiddenfile", FileTypeText},   // Hidden file without extension (should be text)
-		{"..hiddenfile", FileTypeText},  // Hidden file starting with double dot
-		{"file..txt", FileTypeText},     // Double dot in filename
+		{"", FileTypeUnknown},            // Empty filename
+		{".", FileTypeUnknown},           // Just a dot
+		{"..", FileTypeUnknown},          // Parent directory reference
+		{"file.", FileTypeUnknown},       // Filename ending with dot but no extension
+		{".hiddenfile", FileTypeText},    // Hidden file without extension (should be text)
+		{"..hiddenfile", FileTypeText},   // Hidden file starting with double dot
+		{"file..txt", FileTypeText},      // Double dot in filename
 		{"file.tar.gz", FileTypeArchive}, // Multiple extensions (should use last one)
 	}
-	
+
 	for _, tt := range tests {
 		t.Run("special_case_"+tt.filename, func(t *testing.T) {
 			result := detector.DetectFileType(tt.filename)
@@ -542,7 +542,7 @@ func BenchmarkSyntaxDetector_DetectFileType(b *testing.B) {
 		"config.json", "data.yaml", "README.md", "Dockerfile", "Makefile",
 		"photo.png", "archive.zip", "program.exe", "unknown.xyz",
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		filename := filenames[i%len(filenames)]
@@ -556,7 +556,7 @@ func BenchmarkSyntaxDetector_GetLanguage(b *testing.B) {
 		"main.go", "script.py", "index.html", "styles.css", "app.js",
 		"config.json", "data.yaml", "README.md", "Dockerfile", "Makefile",
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		filename := filenames[i%len(filenames)]
@@ -570,7 +570,7 @@ func BenchmarkSyntaxDetector_IsTextFile(b *testing.B) {
 		"main.go", "script.py", "photo.png", "archive.zip", "program.exe",
 		"config.json", "data.yaml", "README.md", "binary.bin", "text.txt",
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		filename := filenames[i%len(filenames)]
