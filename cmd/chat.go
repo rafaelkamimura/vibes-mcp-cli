@@ -1,21 +1,21 @@
 package cmd
 
 import (
-   "bufio"
-   "bytes"
-   "context"
-   "encoding/json"
-   "fmt"
-   "net/http"
-   "os"
-   "strings"
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
 
-   "github.com/spf13/cobra"
-   "golang.org/x/term"
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
-   "openai-cli/internal/client"
-   "openai-cli/internal/providers"
-   "openai-cli/internal/service"
+	"openai-cli/internal/client"
+	"openai-cli/internal/providers"
+	"openai-cli/internal/service"
 )
 
 var (
@@ -79,16 +79,16 @@ var chatCmd = &cobra.Command{
 						return err
 					}
 					defer resp.Body.Close()
-       				if resp.StatusCode != http.StatusOK {
-       					return fmt.Errorf("request failed: status code %d", resp.StatusCode)
-       				}
+					if resp.StatusCode != http.StatusOK {
+						return fmt.Errorf("request failed: status code %d", resp.StatusCode)
+					}
 					var cResp client.ChatCompletionsResponse
 					if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 						return err
 					}
 					respMsg = cResp.Choices[0].Message.Content
 				} else {
-					cliClient, err := providers.NewClient(cfg.Provider, cfg.APIKey, cfg.BaseURL)
+					cliClient, err := providers.NewClientWithAuth(cfg.Provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 					if err != nil {
 						return err
 					}
@@ -145,9 +145,9 @@ var chatCmd = &cobra.Command{
 				return err
 			}
 			defer resp.Body.Close()
-       			if resp.StatusCode != http.StatusOK {
-       				return fmt.Errorf("request failed: status code %d", resp.StatusCode)
-       			}
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("request failed: status code %d", resp.StatusCode)
+			}
 			var cResp client.ChatCompletionsResponse
 			if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 				return err
@@ -156,7 +156,7 @@ var chatCmd = &cobra.Command{
 			return nil
 		}
 		// direct provider client
-		cliClient, err := providers.NewClient(cfg.Provider, cfg.APIKey, cfg.BaseURL)
+		cliClient, err := providers.NewClientWithAuth(cfg.Provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 		if err != nil {
 			return err
 		}

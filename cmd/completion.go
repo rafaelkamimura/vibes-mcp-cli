@@ -1,16 +1,16 @@
 package cmd
 
 import (
-   "bytes"
-   "context"
-   "encoding/json"
-   "fmt"
-   "github.com/spf13/cobra"
-   "net/http"
-   "openai-cli/internal/client"
-   "openai-cli/internal/providers"
-   "openai-cli/internal/service"
-   "strings"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"github.com/spf13/cobra"
+	"net/http"
+	"openai-cli/internal/client"
+	"openai-cli/internal/providers"
+	"openai-cli/internal/service"
+	"strings"
 )
 
 var (
@@ -54,9 +54,9 @@ var completionCmd = &cobra.Command{
 				return err
 			}
 			defer resp.Body.Close()
-       		if resp.StatusCode != http.StatusOK {
-       			return fmt.Errorf("request failed: status code %d", resp.StatusCode)
-       		}
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("request failed: status code %d", resp.StatusCode)
+			}
 			var cResp client.CompletionsResponse
 			if err := json.NewDecoder(resp.Body).Decode(&cResp); err != nil {
 				return err
@@ -65,7 +65,7 @@ var completionCmd = &cobra.Command{
 			return nil
 		}
 		// direct provider client
-		cliClient, err := providers.NewClient(cfg.Provider, cfg.APIKey, cfg.BaseURL)
+		cliClient, err := providers.NewClientWithAuth(cfg.Provider, cfg.APIKey, cfg.BaseURL, cfg.AgentURL)
 		if err != nil {
 			return err
 		}
