@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sync"
 	"time"
@@ -350,6 +351,11 @@ func (c *httpClient) sendHTTPRequest(ctx context.Context, batchReq BatchRequest)
 		return fmt.Errorf("failed to marshal batch request: %w", err)
 	}
 	
+	// Log the exact JSON being sent for debugging
+	c.logger.Debug("Sending telemetry batch", 
+		zap.String("json", string(jsonData)),
+		zap.Int("logCount", len(batchReq.Logs)))
+	
 	url := c.config.BaseURL + "/api/telemetry/logs"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonData))
 	if err != nil {
@@ -372,8 +378,21 @@ func (c *httpClient) sendHTTPRequest(ctx context.Context, batchReq BatchRequest)
 	}
 	defer resp.Body.Close()
 	
+	// Log response details for debugging
+	c.logger.Debug("Telemetry API response", 
+		zap.Int("statusCode", resp.StatusCode),
+		zap.String("url", url))
+	
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("API returned status %d", resp.StatusCode)
+		// Read response body for detailed error information
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr == nil {
+			c.logger.Error("Telemetry API error response", 
+				zap.Int("statusCode", resp.StatusCode),
+				zap.String("responseBody", string(respBody)),
+				zap.String("requestJSON", string(jsonData)))
+		}
+		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 	
 	var batchResp BatchResponse
