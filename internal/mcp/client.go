@@ -266,3 +266,181 @@ func (c *Client) GetOptimizationMetrics(ctx context.Context, traceID string) (ma
 	
 	return metrics, nil
 }
+
+// Prompt-specific MCP client methods
+
+// ListPromptResources retrieves all available prompt template resources.
+func (c *Client) ListPromptResources(ctx context.Context, traceID string) ([]PromptResource, error) {
+	raw, err := c.rawCall(ctx, "resources/list", map[string]interface{}{
+		"type": "prompt",
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var resources []PromptResource
+	if err := json.Unmarshal(raw, &resources); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prompt resources: %w", err)
+	}
+	
+	return resources, nil
+}
+
+// GetPromptResource retrieves a specific prompt template resource.
+func (c *Client) GetPromptResource(ctx context.Context, uri, traceID string) (*PromptResource, error) {
+	params := map[string]interface{}{
+		"uri": uri,
+	}
+	
+	raw, err := c.rawCall(ctx, "resources/read", params, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var resource PromptResource
+	if err := json.Unmarshal(raw, &resource); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prompt resource: %w", err)
+	}
+	
+	return &resource, nil
+}
+
+// ListPromptTools retrieves all available prompt operation tools.
+func (c *Client) ListPromptTools(ctx context.Context, traceID string) ([]PromptTool, error) {
+	raw, err := c.rawCall(ctx, "tools/list", map[string]interface{}{
+		"type": "prompt",
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var tools []PromptTool
+	if err := json.Unmarshal(raw, &tools); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prompt tools: %w", err)
+	}
+	
+	return tools, nil
+}
+
+// GeneratePrompt generates a prompt from a template via MCP tool call.
+func (c *Client) GeneratePrompt(ctx context.Context, params PromptGenerateParams, traceID string) (*PromptGenerateResult, error) {
+	raw, err := c.rawCall(ctx, "tools/call", map[string]interface{}{
+		"name":      "generate_prompt",
+		"arguments": params,
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var result PromptGenerateResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prompt generation result: %w", err)
+	}
+	
+	return &result, nil
+}
+
+// ValidatePromptTemplate validates a prompt template via MCP tool call.
+func (c *Client) ValidatePromptTemplate(ctx context.Context, params PromptValidateParams, traceID string) (*PromptValidateResult, error) {
+	raw, err := c.rawCall(ctx, "tools/call", map[string]interface{}{
+		"name":      "validate_template",
+		"arguments": params,
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var result PromptValidateResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal validation result: %w", err)
+	}
+	
+	return &result, nil
+}
+
+// DetectWorkspaceContext detects current workspace context via MCP tool call.
+func (c *Client) DetectWorkspaceContext(ctx context.Context, traceID string) (*WorkspaceContext, error) {
+	raw, err := c.rawCall(ctx, "tools/call", map[string]interface{}{
+		"name":      "detect_context",
+		"arguments": map[string]interface{}{},
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var context WorkspaceContext
+	if err := json.Unmarshal(raw, &context); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal workspace context: %w", err)
+	}
+	
+	return &context, nil
+}
+
+// SuggestPromptTemplates suggests relevant templates based on context via MCP tool call.
+func (c *Client) SuggestPromptTemplates(ctx context.Context, params PromptSuggestParams, traceID string) (*PromptSuggestResult, error) {
+	raw, err := c.rawCall(ctx, "tools/call", map[string]interface{}{
+		"name":      "suggest_templates",
+		"arguments": params,
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var result PromptSuggestResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal template suggestions: %w", err)
+	}
+	
+	return &result, nil
+}
+
+// GetPromptHistory retrieves prompt generation history via MCP tool call.
+func (c *Client) GetPromptHistory(ctx context.Context, params PromptHistoryParams, traceID string) (*PromptHistoryResult, error) {
+	raw, err := c.rawCall(ctx, "tools/call", map[string]interface{}{
+		"name":      "get_history",
+		"arguments": params,
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var result PromptHistoryResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prompt history: %w", err)
+	}
+	
+	return &result, nil
+}
+
+// SendToAIAssistant sends generated prompt to AI assistant via MCP tool call.
+func (c *Client) SendToAIAssistant(ctx context.Context, params AIAssistantParams, traceID string) (*AIAssistantResult, error) {
+	raw, err := c.rawCall(ctx, "tools/call", map[string]interface{}{
+		"name":      "send_to_ai",
+		"arguments": params,
+	}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var result AIAssistantResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal AI assistant result: %w", err)
+	}
+	
+	return &result, nil
+}
+
+// GetPromptMetrics retrieves prompt system metrics and statistics.
+func (c *Client) GetPromptMetrics(ctx context.Context, traceID string) (map[string]interface{}, error) {
+	raw, err := c.rawCall(ctx, "get_prompt_metrics", map[string]interface{}{}, traceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	var metrics map[string]interface{}
+	if err := json.Unmarshal(raw, &metrics); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal prompt metrics: %w", err)
+	}
+	
+	return metrics, nil
+}
