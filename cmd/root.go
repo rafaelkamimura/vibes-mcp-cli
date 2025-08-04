@@ -109,7 +109,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&providerFlag, "provider", "", "provider to use (overrides config: openai, anthropic)")
 	rootCmd.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "API key (overrides config/env)")
 	rootCmd.PersistentFlags().StringVar(&baseURLFlag, "base-url", "", "API base URL (overrides config/env)")
-   // serverURL is where UI and other commands send MCP JSON-RPC requests
+	// serverURL is where UI and other commands send MCP JSON-RPC requests
 	rootCmd.PersistentFlags().StringVar(&serverURL, "server-url", "", "MCP server URL (overrides direct provider; defaults to Agent URL in UI mode)")
 	rootCmd.PersistentFlags().StringVar(&agentURL, "agent-url", "http://localhost:8000", "Vibes Agent backend URL (default http://localhost:8000)")
 	rootCmd.PersistentFlags().BoolVar(&printCurl, "print-curl", false, "Print equivalent curl command and exit")

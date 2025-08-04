@@ -12,11 +12,11 @@ import (
 
 // ResourceMonitor tracks resource usage for processes
 type ResourceMonitor struct {
-	logger      *zap.Logger
-	mu          sync.RWMutex
-	monitoring  map[string]*processStats // Process ID -> stats
-	stopChan    chan struct{}
-	ticker      *time.Ticker
+	logger     *zap.Logger
+	mu         sync.RWMutex
+	monitoring map[string]*processStats // Process ID -> stats
+	stopChan   chan struct{}
+	ticker     *time.Ticker
 }
 
 // processStats holds resource usage statistics for a process
@@ -175,14 +175,14 @@ func (rm *ResourceMonitor) sampleProcessResources(processID string, stats *proce
 func (rm *ResourceMonitor) sampleProcessResourcesFallback(processID string, stats *processStats) error {
 	// This is a simplified fallback that doesn't provide accurate measurements
 	// In a production system, you would implement platform-specific resource gathering
-	
+
 	// For now, just record that we attempted sampling
 	stats.sampleCount++
-	
+
 	// Use runtime memory stats as a rough approximation
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
-	
+
 	// Very rough approximation - not accurate for individual processes
 	memoryMB := int(memStats.Alloc / 1024 / 1024)
 	if memoryMB > stats.peakMemoryMB {
@@ -241,12 +241,12 @@ func (rm *ResourceMonitor) GetAllStats() map[string]*ResourceUsage {
 // Close shuts down the resource monitor
 func (rm *ResourceMonitor) Close() {
 	close(rm.stopChan)
-	
+
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
-	
+
 	// Clear monitoring data
 	rm.monitoring = make(map[string]*processStats)
-	
+
 	rm.logger.Debug("resource monitor closed")
 }
