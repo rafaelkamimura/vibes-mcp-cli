@@ -1,10 +1,37 @@
-# openai-cli
+# vibes-mcp-cli
 
-`openai-cli` is a Go-based Multi-Provider CLI and HTTP server for working with Large Language Model (LLM) providers such as OpenAI (and Anthropic / Claude). It provides:
+`vibes-mcp-cli` is a comprehensive Go-based Multi-Provider CLI and HTTP server for working with Large Language Model (LLM) providers, featuring enterprise-grade session management and interactive terminal UI. It provides:
+
+## 🚀 **Key Features**
+
+### **Multi-Provider LLM Support**
 - Type-safe clients for completions, chat, and embeddings
-- A unified CLI (`completion`, `chat`, `embed`) with flags and REPL support
-- An HTTP proxy server (`serve`) to expose a local MCP API
-- Built-in support for environment variables, dotenv (`.env`), and config files (`.openai-cli.yaml`)
+- Support for OpenAI, Anthropic Claude, and other providers
+- Unified CLI interface with consistent command structure
+
+### **Advanced Session Management** ⭐
+- **Interactive Session Control**: Real-time communication with Claude CLI processes
+- **Session Persistence**: Complete conversation history with backup and restoration
+- **Advanced Search & Filtering**: Find sessions by content, date, status, or metadata
+- **Metadata Tracking**: Detailed tracking of tokens, response times, and resource usage
+
+### **Interactive Terminal UI** ⭐
+- **Full-Screen TUI**: Comprehensive terminal interface with multiple pages
+- **Session Logs Viewer**: Browse, search, and manage session history
+- **Telemetry Dashboard**: Real-time system monitoring with ASCII charts
+- **File Explorer**: Browse and interact with project files
+
+### **Production-Ready Stability** ⭐
+- **Memory Leak Protection**: Robust resource management and cleanup
+- **TTY Detection**: Works in containers, CI/CD, and headless environments
+- **Error Boundaries**: Comprehensive error handling with graceful recovery
+- **Timeout Protection**: All operations have configurable timeouts
+
+### **Enterprise Integration**
+- HTTP proxy server (`serve`) to expose MCP-compatible API
+- Telemetry integration with vibes-agent-backend
+- Authentication support with JWT tokens
+- Built-in support for environment variables, dotenv (`.env`), and config files
 
 ## Installation
 
@@ -54,13 +81,17 @@ make clean        # Remove built binaries
 
 ## Environment Variables
 
-| Variable                   | Description                                        |
-|----------------------------|----------------------------------------------------|
-| OPENAI_CLI_API_KEY         | Default API key for the selected provider          |
-| OPENAI_CLI_BASE_URL        | Base URL for API requests                          |
-| OPENAI_CLI_PROVIDER        | Default provider (`openai`, `anthropic`, etc.)     |
-| OPENAI_CLI_LOG_LEVEL       | Logging level (`debug`, `info`, `warn`, `error`)   |
-| PROMPT_MODE_PASSWORD       | Password to unlock interactive REPL (`chat`)       |
+| Variable                         | Description                                        |
+|----------------------------------|----------------------------------------------------|
+| OPENAI_CLI_API_KEY               | Default API key for the selected provider          |
+| OPENAI_CLI_BASE_URL              | Base URL for API requests                          |
+| OPENAI_CLI_PROVIDER              | Default provider (`openai`, `anthropic`, etc.)     |
+| OPENAI_CLI_LOG_LEVEL             | Logging level (`debug`, `info`, `warn`, `error`)   |
+| OPENAI_CLI_AGENT_URL             | Vibes Agent backend URL (default: http://localhost:8000) |
+| OPENAI_CLI_AUTH_TOKEN            | JWT token for backend authentication              |
+| OPENAI_CLI_TELEMETRY_ENABLED     | Enable telemetry data collection (`true`/`false`) |
+| OPENAI_CLI_TELEMETRY_API_KEY     | API key for telemetry service                     |
+| PROMPT_MODE_PASSWORD             | Password to unlock interactive REPL (`chat`)       |
 
 Environment variables can be set in a `.env` file (via `github.com/joho/godotenv`) or directly in your shell.
 
@@ -152,6 +183,89 @@ To proxy commands through a running MCP server:
   --prompt "Hello" \
   --server-url http://localhost:8080
 ```
+
+## 🖥️ **Interactive Terminal UI**
+
+Launch the comprehensive terminal user interface:
+
+```bash
+./vibes-mcp-cli ui
+```
+
+### **UI Features**
+
+#### **Main Pages**
+- **Chat**: Interactive chat interface with conversation context
+- **Session Logs**: Browse and manage Claude CLI session history
+- **Telemetry**: Real-time system monitoring and performance metrics
+- **File Explorer**: Browse project files with MCP integration
+- **Settings**: Configuration and tenant management
+
+#### **Session Management**
+- **Create/Terminate Sessions**: Full lifecycle management
+- **Search & Filter**: Find sessions by name, content, date, or status
+- **Conversation History**: View complete session interactions
+- **Real-time Updates**: Live session status and monitoring
+
+#### **Telemetry Dashboard**
+- **System Health**: CPU, memory, disk usage with progress bars
+- **API Metrics**: Request counts, success rates, response times
+- **ASCII Charts**: Visual trends and performance graphs
+- **Log Viewer**: Real-time log streaming with severity filtering
+
+#### **Keyboard Shortcuts**
+- `F1`: Home menu
+- `F2`: Main navigation menu
+- `F3`: File explorer
+- `G`: Session logs viewer
+- `T`: Telemetry dashboard
+- `Q`: Quit application
+- `/`: Search functionality
+- `Esc`: Return to previous page
+
+### **Environment Support**
+
+The UI automatically detects your environment and provides appropriate alternatives:
+
+#### **Interactive Terminals**
+- Full TUI functionality with all features enabled
+
+#### **Containers/Headless Systems**
+```bash
+# Automatic fallback suggestions
+./vibes-mcp-cli ui --fallback-server  # Auto-start server mode
+./vibes-mcp-cli serve --port 8080     # Manual server mode
+./vibes-mcp-cli chat "message"        # CLI mode
+```
+
+#### **CI/CD Environments**
+- Graceful degradation with helpful error messages
+- Alternative command suggestions
+- No hanging or freezing issues
+
+## 📊 **Session Management**
+
+### **Advanced Session Control**
+
+```bash
+# Create a new Claude CLI session
+./vibes-mcp-cli ui  # Use session management UI
+
+# Sessions are automatically persisted in ./claude-sessions/
+# Session history includes:
+# - Complete conversation logs
+# - Metadata (tokens, response times, resource usage)
+# - Search indexes for fast filtering
+# - Backup files with retention policies
+```
+
+### **Session Features**
+- **Interactive Communication**: Real-time streaming with Claude CLI
+- **Persistent History**: All conversations saved with metadata
+- **Advanced Search**: Text search, regex support, multi-criteria filtering
+- **Resource Monitoring**: Track memory, CPU, and token usage
+- **Backup & Restore**: Automated backups with configurable retention
+- **Concurrent Management**: Handle multiple sessions safely
 
 ## HTTP MCP Server
 
